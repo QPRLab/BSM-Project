@@ -365,9 +365,9 @@
       console.log(`准备卖出: Token ID ${selectedTokenId.value}, 比例 ${sellPercentage.value}%`)
       
       // 步骤1: 检查是否已授权
+      console.log('📤步驟1：检查Leverage token授权')
       const isApproved = await (leverageToken as any).read.isApprovedForAll?.([wallet.account, AMMSwapAddress]) as boolean
       if (!isApproved) {
-        console.log('授权 Leverage Token...')
         const approveTx = await (leverageToken as any).write.setApprovalForAll?.([AMMSwapAddress, true])
         if (!approveTx) throw new Error('Approve failed')
         await publicClient.waitForTransactionReceipt({ hash: approveTx })
@@ -377,7 +377,7 @@
       }
       
       // 步骤2: 执行 swap (注意：gas limit 使用默认值，不手动设置)
-      console.log('执行交易...')
+      console.log('📤步驟2：执行 swap')
       const swapTx = await (ammSwap as any).write.swapLeverageToUsdc?.([
         BigInt(selectedTokenId.value),
         BigInt(sellPercentage.value)

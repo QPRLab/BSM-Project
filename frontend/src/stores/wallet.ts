@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WalletClient } from 'viem'
-import { createWalletClientInstance } from '../utils/client'
+import { createWalletClientInstance } from '../utils/client.js'
 
 export const useWalletStore = defineStore('wallet', () => {
   const account = ref<string | null>(null)

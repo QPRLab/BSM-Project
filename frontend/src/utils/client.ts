@@ -1,6 +1,9 @@
 import { createPublicClient, createWalletClient, custom, http } from 'viem'
 import { sepolia } from 'viem/chains'
-import { useWalletStore } from '../stores/wallet'
+import { useWalletStore } from '../stores/wallet.js'
+
+// Allow safe referencing of `window` in this Vite/browser context for typechecking
+declare const window: any
 
 /**
  * Public Client - 用于读取区块链数据（只读操作）
@@ -48,10 +51,10 @@ export function isWalletConnected() {
  * @param account - 用户的钱包地址
  */
 export function createWalletClientInstance(account?: string) {
-  if (typeof window !== 'undefined' && (window as any).ethereum) {
+  if (typeof window !== 'undefined' && window?.ethereum) {
     const clientConfig: any = {
       chain: sepolia,
-      transport: custom((window as any).ethereum)
+      transport: custom(window.ethereum)
     }
     
     // 如果提供了账户地址，添加到配置中

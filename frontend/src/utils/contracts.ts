@@ -3,7 +3,7 @@
 // 使用示例见文件底部注释。
 
 import { getContract } from 'viem'
-import { publicClient } from './client'
+import { publicClient } from './client.js'
 import deployed from '../config/deployed_addresses.json'
 
 // Static ABI imports for files that may not resolve with dynamic import during Vite dev
