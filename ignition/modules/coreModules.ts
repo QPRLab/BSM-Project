@@ -160,5 +160,5 @@ export default buildModule("coreModules", (m) => {
     CustodianInitializeCall,
     auctionManagerInitializeCall,
     liquidationManagerInitializeCall
-  };
+  } as any;
 });

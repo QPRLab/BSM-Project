@@ -126,5 +126,5 @@ export default buildModule("ammModules", (m) => {
     ammliquidityInitializeCall,
     ammSwapInitializeCall,
     setAuthorizedAMMCall,
-  };
+  } as any;
 });

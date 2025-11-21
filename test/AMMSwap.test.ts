@@ -323,7 +323,7 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
     const usdcGained = userUsdcAfter - userUsdcBefore;
 
     console.log(`\n--- 交易结果 ---`);
-    console.log(`获得 USDC: ${formatUnits(usdcGained, 6)}`);
+    console.log(`获得 USDC: ${formatUnits(usdcGained as unknown as bigint, 6)}`);
 
     assert(usdcGained > 0n, "应该获得了 USDC");
     console.log("\n✅ Test 2 通过: swapStableToUsdc 成功执行");
@@ -367,11 +367,11 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
     const usdcSpent = userUsdcBefore - userUsdcAfter;
 
     console.log(`\n--- 交易结果 ---`);
-    console.log(`花费 USDC: ${formatUnits(usdcSpent, 6)}`);
-    console.log(`获得 Stable: ${formatUnits(stableGained, 18)}`);
+    console.log(`花费 USDC: ${formatUnits(usdcSpent as unknown as bigint, 6)}`);
+    console.log(`获得 Stable: ${formatUnits(stableGained as unknown as bigint, 18)}`);
 
     assert(stableGained > 0n, "应该获得了 Stable tokens");
-    assert(usdcSpent === swapAmount, "应该花费指定数量的 USDC");
+    assert((usdcSpent as unknown as bigint) === (swapAmount as unknown as bigint), "应该花费指定数量的 USDC");
     console.log("\n✅ Test 3 通过: swapUsdcToStable 成功执行");
   });
 
@@ -464,9 +464,9 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
     const usdcSpent = userUsdcBefore - userUsdcAfter;
     
     console.log(`\n--- 验证结果 ---`);
-    console.log(`USDC 花费: ${formatUnits(usdcSpent, 6)}`);
+    console.log(`USDC 花费: ${formatUnits(usdcSpent as unknown as bigint, 6)}`);
     console.log(`获得 L token ID: ${leverageTokenId.toString()}`);
-    console.log(`AMM 池 S token 增加: ${formatUnits(poolStableAfter - poolStableBefore, 18)}`);
+    console.log(`AMM 池 S token 增加: ${formatUnits((poolStableAfter - poolStableBefore) as unknown as bigint, 18)}`);
 
     // 验证用户拥有的 L token 数量
     const userLTokenBalance = await leverage.read.balanceOf([user, leverageTokenId]);
@@ -596,9 +596,9 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
     const poolUsdcIncrease = poolUsdcAfter - poolUsdcBefore;
     
     console.log(`\n--- 验证结果 ---`);
-    console.log(`USDC 获得: ${formatUnits(usdcGained, 6)}`);
-    console.log(`AMM 池 S token 减少: ${formatUnits(poolStableDecrease, 18)}`);
-    console.log(`AMM 池 USDC 增加: ${formatUnits(poolUsdcIncrease, 6)}`);
+    console.log(`USDC 获得: ${formatUnits(usdcGained as unknown as bigint, 6)}`);
+    console.log(`AMM 池 S token 减少: ${formatUnits(poolStableDecrease as unknown as bigint, 18)}`);
+    console.log(`AMM 池 USDC 增加: ${formatUnits(poolUsdcIncrease as unknown as bigint, 6)}`);
 
     // 断言
     assert(usdcGained > 0n, "应该获得了 USDC");

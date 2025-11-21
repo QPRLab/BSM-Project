@@ -107,7 +107,7 @@ async function main() {
   
   // ================== 1) find a leverage token owned by me ==================
   console.log('1) find a leverage token owned by me and choose one to liquidate...');
-  const info = await custodian.read.getAllLeverageTokenInfo([me]);
+  const info: any = await custodian.read.getAllLeverageTokenInfo([me]);
   // getAllLeverageTokenInfo returns tuple arrays: tokenIds, balances,...
   const tokenIds = info[0] as bigint[];
   if (!tokenIds || tokenIds.length === 0) {
@@ -181,7 +181,7 @@ async function main() {
     
     let nav: bigint;
     for(let attempt=0; attempt<10; attempt++){
-      const navTuple = await custodian.read.getSingleLeverageTokenNavV2([me, tokenId]);
+      const navTuple: any = await custodian.read.getSingleLeverageTokenNavV2([me, tokenId]);
       nav = navTuple[2] as bigint; // net NAV in 1e18
       console.log('Current net NAV:', formatEther(nav));
       if (nav < liquidationThreshold) {
@@ -203,7 +203,7 @@ async function main() {
     // let auctionId = 0n;
     // 4) 检查是否bark过，没有则调用bark触发清算拍卖
     console.log('4) 检查是否bark过，没有则调用bark触发清算拍卖...');
-    let liqStatus = await liquidationManager.read.userLiquidationStatus([me, tokenId]);
+    let liqStatus: any = await liquidationManager.read.userLiquidationStatus([me, tokenId]);
     let isUnder = Boolean(
       ((liqStatus as any).isUnderLiquidation) ??
       ((liqStatus as any)[4] as boolean)
@@ -241,7 +241,7 @@ async function main() {
   }
   else
   {
-    let statusArr = await auctionManager.read.getAuctionStatus([BigInt(auctionId)]);
+    let statusArr: any = await auctionManager.read.getAuctionStatus([BigInt(auctionId)]);
     // const currentAuctionPrice = statusArr[1] as bigint;
     // console.log('Current auction price:', formatEther(currentAuctionPrice));
     const needtoReset = statusArr[0] as boolean;
@@ -262,7 +262,7 @@ async function main() {
 
 
   console.log('6) bidder approve stable to custodian for auction purchase, then purchase...');
-  const auctionInfo = await auctionManager.read.auctions([BigInt(auctionId)]);
+  const auctionInfo: any = await auctionManager.read.auctions([BigInt(auctionId)]);
   const underlying = auctionInfo[1] as bigint;
   console.log('Auction underlying amount:', formatEther(underlying));
   const approveAmount = 1000000n * 10n ** 18n;

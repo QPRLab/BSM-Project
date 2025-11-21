@@ -61,9 +61,9 @@ describe("Oracle Adapter (API3) & PriceFeed Update", async function () {
       // 适配器按 18 位返回；这里直接给 150 USD (18位) 的数值
       // IApi3ReaderProxy.read 返回 int224，timestamp uint32
       // 这里 value 直接给 150e18
-      api3Proxy = await viem.deployContract("Api3ReaderProxyMock", [
+        api3Proxy = await viem.deployContract("Api3ReaderProxyMock", [
         150000000000000000000n, // 150e18 as int224
-        BigInt(now),
+        now,
       ]);
     } else {
       // 直接使用链上代理

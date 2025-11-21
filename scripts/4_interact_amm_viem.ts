@@ -87,7 +87,7 @@ async function getWltcPriceFromUniswap(publicClient: any, poolAddress = '0xCa250
   ] as const;
 
   const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: poolAbi as any, client: publicClient });
-  const slot0 = await poolContract.read.slot0([]) as readonly [bigint, number, number, number, number, number, boolean];
+  const slot0 = await (poolContract as any).read.slot0([]) as readonly [bigint, number, number, number, number, number, boolean];
   const sqrtPriceX96 = slot0[0];
   const tick = slot0[1];
 
@@ -316,192 +316,191 @@ async function main() {
   // =====================================================================
   // 第4部分：测试 Leverage -> USDC 交易
   // =====================================================================
-  {
-    console.log("🔄 ===== 第4部分：Leverage -> USDC 交易测试 =====\n");
+  // {
+  //   console.log("🔄 ===== 第4部分：Leverage -> USDC 交易测试 =====\n");
     
-    const leverageTokenId = 2n;
-    const userLeverageBalance = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+  //   const leverageTokenId = 2n;
+  //   const userLeverageBalance = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
     
-    if (userLeverageBalance > 0n) {
-      const lAmountPercentage = 10n; // 赎回 10%
+  //   if (userLeverageBalance > 0n) {
+  //     const lAmountPercentage = 10n; // 赎回 10%
       
-      try {
-        console.log("📤 步骤1: 授权Leverage Token...");
-        await leverageContract.write.setApprovalForAll([deployedAddresses["ammModules#AMMSwap"], true]);
+  //     try {
+  //       console.log("📤 步骤1: 授权Leverage Token...");
+  //       await leverageContract.write.setApprovalForAll([deployedAddresses["ammModules#AMMSwap"], true]);
         
-        const usdcBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-        const leverageBefore = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+  //       const usdcBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+  //       const leverageBefore = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
         
-        console.log("📤 步骤2: 执行交易...");
-        const tx = await ammSwapContract.write.swapLeverageToUsdc([leverageTokenId, lAmountPercentage]);
-        await publicClient.waitForTransactionReceipt({ hash: tx });
+  //       console.log("📤 步骤2: 执行交易...");
+  //       const tx = await ammSwapContract.write.swapLeverageToUsdc([leverageTokenId, lAmountPercentage]);
+  //       await publicClient.waitForTransactionReceipt({ hash: tx });
         
-        const usdcAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-        const leverageAfter = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+  //       const usdcAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+  //       const leverageAfter = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
         
-        const leverageSpent = leverageBefore - leverageAfter;
-        const usdcReceived = usdcAfter - usdcBefore;
-        const unitCost = (leverageSpent * 10n**6n) / usdcReceived;
+  //       const leverageSpent = leverageBefore - leverageAfter;
+  //       const usdcReceived = usdcAfter - usdcBefore;
+  //       const unitCost = (leverageSpent * 10n**6n) / usdcReceived;
         
-        console.log("\n📊 交易结果:");
-        console.log(`  付出 Leverage: ${formatEther(leverageSpent)} L`);
-        console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
-        console.log(`  单位成本: ${formatUnits(unitCost, 18)} L per USDC`);
+  //       console.log("\n📊 交易结果:");
+  //       console.log(`  付出 Leverage: ${formatEther(leverageSpent)} L`);
+  //       console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
+  //       console.log(`  单位成本: ${formatUnits(unitCost, 18)} L per USDC`);
         
-      } catch (error: any) {
-        console.log(`⚠️ 交易失败: ${error.shortMessage || error.message}`);
-      }
-    } else {
-      console.log("⚠️ 用户没有Leverage Token，跳过测试");
-    }
+  //     } catch (error: any) {
+  //       console.log(`⚠️ 交易失败: ${error.shortMessage || error.message}`);
+  //     }
+  //   } else {
+  //     console.log("⚠️ 用户没有Leverage Token，跳过测试");
+  //   }
     
-    console.log("\n✅ 第4部分完成\n");
-  }
+  //   console.log("\n✅ 第4部分完成\n");
+  // }
 
   // =====================================================================
   // 第5部分：测试 USDC -> Leverage 交易（完整流程）
   // =====================================================================
-  // {
-  //   console.log("🔄 ===== 第5部分：USDC -> Leverage 交易测试 =====\n");
-  //   console.log("流程：DEX购买WLTC → 铸造Stable+Leverage → AMM卖出Stable\n");
+  {
+    console.log("🔄 ===== 第5部分：USDC -> Leverage 交易测试 =====\n");
+    console.log("流程：DEX购买WLTC → 铸造Stable+Leverage → AMM卖出Stable\n");
     
-  //   const LAmountDesired = 10000n * 10n ** 18n;
-  //   const leverageType = 2n; // AGGRESSIVE
-  //   const mintPrice = 120n * 10n ** 18n;
+    const LAmountDesired = 10000n * 10n ** 18n;
+    const leverageType = 2n; // AGGRESSIVE
+    const mintPrice = 120n * 10n ** 18n;
     
-  //   try {
-  //     // 步骤0: 计算需要的资产
-  //     const stableRequired = LAmountDesired;
+    try {
+      // 步骤0: 计算需要的资产
+      const stableRequired = LAmountDesired;
       
-  //     // 计算精确需要的WLTC，然后向上取整到5位小数
-  //     const wltcExact = (2n * stableRequired * 10n ** 18n) / mintPrice; //18位
-  //     // 向上取整到5位小数: ceil(value / 10^13) * 10^13
-  //     const wltcNeeded = ((wltcExact + 10n ** 13n - 1n) / (10n ** 13n)) * (10n ** 13n);//18位
+      // 计算精确需要的WLTC，然后向上取整到5位小数
+      const wltcExact = (2n * stableRequired * 10n ** 18n) / mintPrice; //18位
+      // 向上取整到5位小数: ceil(value / 10^13) * 10^13
+      const wltcNeeded = ((wltcExact + 10n ** 13n - 1n) / (10n ** 13n)) * (10n ** 13n);//18位
       
-  //     console.log("📊 资产初始计算:");
-  //     console.log(`  需从DEX购买 WLTC数量: ${formatEther(wltcNeeded)} (向上取整至5位小数)`); 
-  //     console.log(`  将铸造 Stable数量: ${formatEther(stableRequired)}`);
-  //     console.log(`  将铸造 Leverage数量: ${formatEther(LAmountDesired)}\n`);
+      console.log("📊 资产初始计算:");
+      console.log(`  需从DEX购买 WLTC数量: ${formatEther(wltcNeeded)} (向上取整至5位小数)`); 
+      console.log(`  将铸造 Stable数量: ${formatEther(stableRequired)}`);
+      console.log(`  将铸造 Leverage数量: ${formatEther(LAmountDesired)}\n`);
       
-  //     const usdcBalanceStart = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const leverageBalanceStart = await leverageContract.read.balanceOf([USER_ADDRESS, leverageType]) as bigint;
-  //     const wltcBalanceBefore = await wltcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const usdcBalanceStart = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const leverageBalanceStart = await leverageContract.read.balanceOf([USER_ADDRESS, leverageType]) as bigint;
+      const wltcBalanceBefore = await wltcContract.read.balanceOf([USER_ADDRESS]) as bigint;
       
-  //     // 步骤1: DEX购买WLTC
-  //     console.log("📤 步骤1: 在DEX购买WLTC...");
+      // 步骤1: DEX购买WLTC
+      console.log("📤 步骤1: 在DEX购买WLTC...");
       
-  //     const WLTC_ADDRESS = deployedAddresses["tokenModules#WLTCMock"];
-  //     const USDC_ADDRESS = deployedAddresses["tokenModules#USDCMock"];
+      const WLTC_ADDRESS = deployedAddresses["tokenModules#WLTCMock"];
+      const USDC_ADDRESS = deployedAddresses["tokenModules#USDCMock"];
 
-  //     //1.1 授权 USDC 给 Universal Router
-  //     const pathUsdcToWltc = encodePathExactOut(WLTC_ADDRESS as string, fee, USDC_ADDRESS as string);
-  //     const AmountInUsdc = await quoter.read.quoteExactOutput([pathUsdcToWltc as `0x${string}`, wltcNeeded]) as bigint; // 6 decimals (USDC)
-  //     console.log(`  根据UniSwap Quoter, 需要 USDC: ${formatUnits(AmountInUsdc as bigint, 6)}`);
-  //     // 添加5% slippage buffer (使用整数运算以保持 bigint 精度)
-  //     // 使用向上取整：ceil(AmountInUsdc * 105 / 100) = (AmountInUsdc*105 + 99) / 100
-  //     const slippageNumerator = 105n;
-  //     const slippageDenominator = 100n;
-  //     const AmountInUsdcWithSlippage = (AmountInUsdc * slippageNumerator + slippageDenominator - 1n) / slippageDenominator;
-  //     // 基于 uniswap quoter 的价格 * 1.05 作为 approve 额度，防止 slippage 导致失败
+      //1.1 授权 USDC 给 Universal Router
+      const pathUsdcToWltc = encodePathExactOut(WLTC_ADDRESS as string, fee, USDC_ADDRESS as string);
+      const AmountInUsdc = await quoter.read.quoteExactOutput([pathUsdcToWltc as `0x${string}`, wltcNeeded]) as bigint; // 6 decimals (USDC)
+      console.log(`  根据UniSwap Quoter, 需要 USDC: ${formatUnits(AmountInUsdc as bigint, 6)}`);
+      // 添加5% slippage buffer (使用整数运算以保持 bigint 精度)
+      // 使用向上取整：ceil(AmountInUsdc * 105 / 100) = (AmountInUsdc*105 + 99) / 100
+      const slippageNumerator = 105n;
+      const slippageDenominator = 100n;
+      const AmountInUsdcWithSlippage = (AmountInUsdc * slippageNumerator + slippageDenominator - 1n) / slippageDenominator;
+      // 基于 uniswap quoter 的价格 * 1.05 作为 approve 额度，防止 slippage 导致失败
+      // 检查并设置 allowance：如果当前 allowance 足够则跳过；否则先（可选）清零再批准。
+      const spender = UNIVERSAL_ROUTER as `0x${string}`;
+      let allowance = await ensureAllowance(usdcContract, USER_ADDRESS,spender, AmountInUsdcWithSlippage);
+      console.log(`  ✅ 当前Allowance(user -> Universal Router) [+5%]: ${formatUnits(allowance, 6)} USDC`);
       
-  //     // 检查并设置 allowance：如果当前 allowance 足够则跳过；否则先（可选）清零再批准。
-  //     const spender = UNIVERSAL_ROUTER as `0x${string}`;
-  //     let allowance = await ensureAllowance(usdcContract, USER_ADDRESS,spender, AmountInUsdcWithSlippage);
-  //     console.log(`  ✅ 当前Allowance(user -> Universal Router) [+5%]: ${formatUnits(allowance, 6)} USDC`);
+      //1.2 执行 swap
+      const path = encodePacked(['address', 'uint24', 'address'], [WLTC_ADDRESS, fee, USDC_ADDRESS]);
+      const swapInput = encodeAbiParameters(
+        parseAbiParameters('address, uint256, uint256, bytes, bool'),
+        [USER_ADDRESS as `0x${string}`, wltcNeeded, AmountInUsdcWithSlippage, path, true]
+      );
+      const swapTx = await universalRouter.write.execute(['0x01', [swapInput], BigInt(Math.floor(Date.now() / 1000) + 1800)]);
+      await publicClient.waitForTransactionReceipt({ hash: swapTx });
+      const usdcAfterBuy = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const usdcSpentOnWltc = usdcBalanceStart - usdcAfterBuy;
       
-  //     //1.2 执行 swap
-  //     const path = encodePacked(['address', 'uint24', 'address'], [WLTC_ADDRESS, fee, USDC_ADDRESS]);
-  //     const swapInput = encodeAbiParameters(
-  //       parseAbiParameters('address, uint256, uint256, bytes, bool'),
-  //       [USER_ADDRESS as `0x${string}`, wltcNeeded, AmountInUsdcWithSlippage, path, true]
-  //     );
-  //     const swapTx = await universalRouter.write.execute(['0x01', [swapInput], BigInt(Math.floor(Date.now() / 1000) + 1800)]);
-  //     await publicClient.waitForTransactionReceipt({ hash: swapTx });
-  //     const usdcAfterBuy = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const usdcSpentOnWltc = usdcBalanceStart - usdcAfterBuy;
-      
-  //     //1.3 验证实际购买到的WLTC数量
-  //     const wltcBalanceAfter = await wltcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const wltcActualBought = wltcBalanceAfter - wltcBalanceBefore;
-  //     console.log(`  ✅ 花费 ${formatUnits(usdcSpentOnWltc, 6)} USDC`);
-  //     console.log(`  ✅ 购买 ${formatEther(wltcActualBought)} WLTC（应购买: ${formatEther(wltcNeeded)}）\n`);
-      
-
-  //     // 步骤2: 授权并铸造
-  //     console.log("📤 步骤2: 授权WLTC并铸造代币...");
-
-  //     // 2.1 授权Custodian合约花费WLTC
-  //     allowance = await ensureAllowance(wltcContract, USER_ADDRESS, deployedAddresses["coreModules#CustodianFixed"], wltcNeeded);//原始的wltc在用户地址
-  //     console.log(`  ✅ 当前Allowance(user -> CustodianFixed): ${formatUnits(allowance, 18)} WLTC`);
-      
-  //     // 2.2 铸造Stable & leverage
-  //     const stableBeforeMint = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const mintTx = await custodianContract.write.mint([wltcNeeded, mintPrice, leverageType]);
-  //     await publicClient.waitForTransactionReceipt({ hash: mintTx });
-  //     const stableAfterMint = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const actualStableMinted = stableAfterMint - stableBeforeMint;
-  //     console.log(`  ✅ 铸造 ${formatEther(actualStableMinted)} Stable\n`);
-      
-  //     // 步骤3: AMM卖出Stable
-  //     console.log("📤 步骤3: AMM卖出Stable换USDC...");
-
-  //     // 3.1 授权AMM合约花费Stable
-  //     allowance = await ensureAllowance(stableContract, USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"], actualStableMinted)
-  //     console.log(`  ✅ 当前Allowance(user -> AMMLiquidity): ${formatUnits(allowance, 18)} Stable`);
-      
-  //     const usdcBeforeSell = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const sellTx = await ammSwapContract.write.swapStableToUsdc([actualStableMinted]);
-  //     await publicClient.waitForTransactionReceipt({ hash: sellTx });
-      
-  //     const usdcAfterSell = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const usdcFromSell = usdcAfterSell - usdcBeforeSell;
-  //     console.log(`  ✅ 收入 ${formatUnits(usdcFromSell, 6)} USDC\n`);
+      //1.3 验证实际购买到的WLTC数量
+      const wltcBalanceAfter = await wltcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const wltcActualBought = wltcBalanceAfter - wltcBalanceBefore;
+      console.log(`  ✅ 花费 ${formatUnits(usdcSpentOnWltc, 6)} USDC`);
+      console.log(`  ✅ 购买 ${formatEther(wltcActualBought)} WLTC（应购买: ${formatEther(wltcNeeded)}）\n`);
       
 
-  //     console.log("📊 Swap(USDC->Leverage)最终统计");
-  //     // 最终统计
-  //     const usdcBalanceEnd = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //     const leverageBalanceEnd = await leverageContract.read.balanceOf([USER_ADDRESS, leverageType]) as bigint;
-  //     const totalUsdcCost = usdcBalanceStart - usdcBalanceEnd;
-  //     const totalLeverageGained = leverageBalanceEnd - leverageBalanceStart;
-  //     const currentOracleStatus = await oracleContract.read.getPriceStatus([]) as readonly [bigint, bigint, bigint, boolean, boolean, bigint];
-  //     const currentPrice = currentOracleStatus[0]; // 当前WLTC价格
-  //     // AGGRESSIVE: NAV = (2*Pt - P0) / P0
-  //     const PRICE_PRECISION = 10n ** 18n;
-  //     let grossNavInWei: bigint;
-  //     if (leverageType === 2n) { // AGGRESSIVE
-  //       const numerator = 2n * currentPrice - mintPrice;
-  //       const denominator = mintPrice;
-  //       grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
-  //     } else if (leverageType === 1n) { // MODERATE
-  //       const numerator = 5n * currentPrice - mintPrice;
-  //       const denominator = 4n * mintPrice;
-  //       grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
-  //     } else { // CONSERVATIVE
-  //       const numerator = 9n * currentPrice - mintPrice;
-  //       const denominator = 8n * mintPrice;
-  //       grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
-  //     }
-      
-  //     console.log(`  总付出 USDC: ${formatUnits(totalUsdcCost, 6)}`);
-  //     console.log(`  总得到 Leverage: ${formatEther(totalLeverageGained)} L`);
-  //     console.log(`  铸造价格 P0: ${formatEther(mintPrice)} USDC`);
-  //     console.log(`  当前价格 Pt: ${formatEther(currentPrice)} USDC`);
+      // 步骤2: 授权并铸造
+      console.log("📤 步骤2: 授权WLTC并铸造代币...");
 
-  //     if (totalLeverageGained > 0n) {
-  //       const unitCost = (totalUsdcCost * 10n**18n) / totalLeverageGained;
-  //       console.log(`  单位份额成本: ${formatUnits(unitCost, 6)} USDC per L`);
-  //     }      
-  //     console.log(`  单位份额净值: ${formatEther(grossNavInWei)} USDC`);
-
-  //     console.log(`  总价值: ${formatEther(totalLeverageGained * grossNavInWei / PRICE_PRECISION)} USDC`);
+      // 2.1 授权Custodian合约花费WLTC
+      allowance = await ensureAllowance(wltcContract, USER_ADDRESS, deployedAddresses["coreModules#CustodianFixed"], wltcNeeded);//原始的wltc在用户地址
+      console.log(`  ✅ 当前Allowance(user -> CustodianFixed): ${formatUnits(allowance, 18)} WLTC`);
       
-  //   } catch (error: any) {
-  //     console.error(`❌ 交易失败: ${error.shortMessage || error.message}`);
-  //   }
+      // 2.2 铸造Stable & leverage
+      const stableBeforeMint = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const mintTx = await custodianContract.write.mint([wltcNeeded, mintPrice, leverageType]);
+      await publicClient.waitForTransactionReceipt({ hash: mintTx });
+      const stableAfterMint = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const actualStableMinted = stableAfterMint - stableBeforeMint;
+      console.log(`  ✅ 铸造 ${formatEther(actualStableMinted)} Stable\n`);
+      
+      // 步骤3: AMM卖出Stable
+      console.log("📤 步骤3: AMM卖出Stable换USDC...");
+
+      // 3.1 授权AMM合约花费Stable
+      allowance = await ensureAllowance(stableContract, USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"], actualStableMinted)
+      console.log(`  ✅ 当前Allowance(user -> AMMLiquidity): ${formatUnits(allowance, 18)} Stable`);
+      
+      const usdcBeforeSell = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const sellTx = await ammSwapContract.write.swapStableToUsdc([actualStableMinted]);
+      await publicClient.waitForTransactionReceipt({ hash: sellTx });
+      
+      const usdcAfterSell = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const usdcFromSell = usdcAfterSell - usdcBeforeSell;
+      console.log(`  ✅ 收入 ${formatUnits(usdcFromSell, 6)} USDC\n`);
+      
+
+      console.log("📊 Swap(USDC->Leverage)最终统计");
+      // 最终统计
+      const usdcBalanceEnd = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+      const leverageBalanceEnd = await leverageContract.read.balanceOf([USER_ADDRESS, leverageType]) as bigint;
+      const totalUsdcCost = usdcBalanceStart - usdcBalanceEnd;
+      const totalLeverageGained = leverageBalanceEnd - leverageBalanceStart;
+      const currentOracleStatus = await oracleContract.read.getPriceStatus([]) as readonly [bigint, bigint, bigint, boolean, boolean, bigint];
+      const currentPrice = currentOracleStatus[0]; // 当前WLTC价格
+      // AGGRESSIVE: NAV = (2*Pt - P0) / P0
+      const PRICE_PRECISION = 10n ** 18n;
+      let grossNavInWei: bigint;
+      if (leverageType === 2n) { // AGGRESSIVE
+        const numerator = 2n * currentPrice - mintPrice;
+        const denominator = mintPrice;
+        grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
+      } else if (leverageType === 1n) { // MODERATE
+        const numerator = 5n * currentPrice - mintPrice;
+        const denominator = 4n * mintPrice;
+        grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
+      } else { // CONSERVATIVE
+        const numerator = 9n * currentPrice - mintPrice;
+        const denominator = 8n * mintPrice;
+        grossNavInWei = (numerator * PRICE_PRECISION) / denominator;
+      }
+      
+      console.log(`  总付出 USDC: ${formatUnits(totalUsdcCost, 6)}`);
+      console.log(`  总得到 Leverage: ${formatEther(totalLeverageGained)} L`);
+      console.log(`  铸造价格 P0: ${formatEther(mintPrice)} USDC`);
+      console.log(`  当前价格 Pt: ${formatEther(currentPrice)} USDC`);
+
+      if (totalLeverageGained > 0n) {
+        const unitCost = (totalUsdcCost * 10n**18n) / totalLeverageGained;
+        console.log(`  单位份额成本: ${formatUnits(unitCost, 6)} USDC per L`);
+      }      
+      console.log(`  单位份额净值: ${formatEther(grossNavInWei)} USDC`);
+
+      console.log(`  总价值: ${formatEther(totalLeverageGained * grossNavInWei / PRICE_PRECISION)} USDC`);
+      
+    } catch (error: any) {
+      console.error(`❌ 交易失败: ${error.shortMessage || error.message}`);
+    }
     
-  //   console.log("\n✅ 第5部分完成\n");
-  // }
+    console.log("\n✅ 第5部分完成\n");
+  }
 
   console.log("🎉 ===== 所有测试完成 =====");
 }
