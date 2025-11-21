@@ -1,0 +1,17 @@
+{
+  "tokenModules#WLTCMock": "0x75B8CDe44E33135E6A08a59A23fC1e244A762501",
+  "tokenModules#USDCMock": "0x790fB0d2b3EDd1962A58d8F6095F3508c017E742",
+  "tokenModules#StableToken": "0x827835DE6D96B30255B26d90C93aaed2900decd4",
+  "tokenModules#MultiLeverageToken": "0xe2d4343fc854862f0792b807c9e897935B039E02",
+  "coreModules#MultiLeverageToken": "0xe2d4343fc854862f0792b807c9e897935B039E02",
+  "coreModules#StableToken": "0x827835DE6D96B30255B26d90C93aaed2900decd4",
+  "coreModules#InterestManager": "0x838c8860f721494B88Bb0C60Aad08C5e135a6a9e",
+  "coreModules#LTCPriceOracle": "0x54D0121C209c0bF550e5600aA98DffBB2aEd77F7",
+  "coreModules#CustodianFixed": "0x1880A400c94D76F7D8e58D820fFA001AF6b164f5",
+  "coreModules#LinearDecrease": "0x16801eE061d76426C9C66008d03a7a7a7da19293",
+  "coreModules#AuctionManager": "0x349D94834f4ac7221670866a3F6881aDd01e72c2",
+  "coreModules#LiquidationManager": "0x4650B86Af767bdF6DE7Bde10AA59d4bEec591ac2",
+  "ammModules#CustodianFixed": "0x1880A400c94D76F7D8e58D820fFA001AF6b164f5",
+  "ammModules#AMMLiquidity": "0x209De0Db2A3Ebd8Ef7677B68235cC9d842226f05",
+  "ammModules#AMMSwap": "0xc17123147eAaC7B20d4F94Cec856228222E87D72"
+}
