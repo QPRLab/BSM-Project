@@ -49,3 +49,9 @@ coverage/
 
 # Hardhat coverage reports
 /coverage
+
+# Ignore PowerPoint files (prevent accidental upload of presentations)
+*.pptx
+
+# Also ignore common office temporary files
+~$*
