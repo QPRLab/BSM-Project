@@ -38,88 +38,48 @@ This project includes an example Ignition module to deploy the contract. You can
 To run the deployment to a local chain:
 
 ```shell
-﻿# BSM Project — 本地開發說明
+```markdown
+1.  部署tokenModules模組：
+	執行命令：npx hardhat ignition deploy ignition/modules/tokenModules.ts --network sepolia
+	命令說明：部署以下合約 WLTCMock, USDCMock, StableToken, MultiLeverageToken 四個合約
+2.  部署coreModules模組： 
+	執行命令：npx hardhat ignition deploy ignition/modules/coreModules.ts --network sepolia
+	命令說明：部署以下合約 InterestManager, LTCPriceOracle, CustodianFixed, LinearDecrease, AuctionManager, LiquidationManager
+3.  鑄幣 USDC, WLTC 合約： 
+	執行命令：npx tsx scripts/1_mint_USDCWLTCtokens_allusers_viem.ts 
+	命令說明：測試環境，部署者給開發組四個人鑄幣 USDC(12000萬枚) WLTC(100萬枚)
+			 僅有部署者可以鑄幣 WLTC, USDC
+4.  鑄幣 S token & L token:
+	執行命令：npx tsx scripts/2_mint_SLtokens_viem.ts 
+	命令說明：部署者給自己帳戶鑄幣，三種槓桿(CONSERVATIVE,MODERATE,AGGRESSIVE)分別鑄幣24.5萬枚 WLTC, 24.5萬枚 WLTC, 1萬枚 WLTC；鑄幣價格 P0=120;
+			 當前持倉：WLTC(50萬枚)，USDC(12000萬枚), stable(9746666枚)，leverage(id5=2612萬，id8=2352萬，id2=60萬)
+			 所有用戶均可呼叫 CustodianFixed.mint 使用自己帳戶的 WLTC 給自己鑄幣，mint 前需要 approve 給 CustodianFixed 相應數量的 WLTC
+5.  在 Uniswap 上創建 WLTC-USDC 的池子：
+	池子參數：V3 position; token0:WLTC, token1:USDC(順序由 Uniswap 決定), fee:0.3%, full range;
+	流動性參數：注入 WLTC(30萬枚) 和 USDC(3600萬枚), WLTC 初始價格為 P0=120；  帳戶剩餘 20萬 WLTC, 8400萬 USDC
+	部署後地址：
+		POOL:   0xCa250B562Beb3Be4fC75e79826390F9f14c622d0(每次重新部署會變化)
+		Router: 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b(不變)
+		Quoter: 0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3(不變)
+6.  部署 ammModules 模組：
+	執行命令：npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
+	命令說明：部署以下合約 AMMLiquidaity, AMMSwap
+7.  合約驗證：
+	執行命令：npx tsx scripts/3_verify_allContracts_viem.ts
+8.  合約交互：
+	檢驗交易：
+		執行命令：npx tsx scripts/4_interact_amm_viem.ts
+		命令說明：
+			若流動性不足，則添加流動性, 注入流動性：500萬 USDC, 500萬 stable; 需要向 AMMLiquidity 中 approve 相應數量的 USDC 和 stable
+			若 Oracle 價格無效，使用更新為 Uniswap 中當前 WLTC 的價格;
+			Stable token <--> USDC token   (基於 AMM)
+			Leverage token <--> USDC token (基於 AMM + DEX)
+	檢驗清算：
+		執行命令：npx tsx scripts/5_auction_viem.ts
+		命令說明：
+			給 CustodianFixed 轉入 10 萬個 stable, 用於獎勵
 
-這份 README 已根據倉庫內實際內容撰寫。該專案是一個完整的智能合約 + 前端範例，包含 AMM/交換、拍賣與清算流程的合約與互動腳本。
-
-主要目錄（與對應說明）
-- `contracts/` — Solidity 合約（核心合約如 `AMMLiquidity.sol`, `AMMSwap.sol`, `CustodianFixed.sol`, `AuctionManager`, `LiquidationManager`, `Types.sol` 等）。
-- `scripts/` — Node + viem 腳本：用於呼叫合約、模擬交易與測試（例如 `test_DEX_QUOTE.ts`, `4_interact_amm_viem.ts`, `5_auction_viem.ts`）。
-- `ignition/` — Ignition 部署模組以及 `ignition/deployments/`（已加入 .gitignore，避免上傳部署私鑰/產物）。
-- `frontend/` — Vue 3 + Vite 前端應用（放置 UI、ABI 加載與合約 helper）。
-- `test/` — Hardhat 測試文件（TypeScript）：`AMM.test.ts`, `AMMSwap.test.ts`, `LiquidationAuction.test.ts`, `Oracle.test.ts` 等。
-
-快速開始（開發機）
-
-1) 安裝專案依賴（根目錄）
-
-```powershell
-npm ci
 ```
-
-2) 安裝前端依賴並啟動開發伺服器
-
-```powershell
-cd frontend
-npm ci
-npm run dev
-```
-
-3) 本地測試（Hardhat）
-
-```powershell
-# 在專案根目錄
-npx hardhat test
-```
-
-4) TypeScript 靜態檢查
-
-```powershell
-npx tsc --noEmit
-```
-
-重要腳本（說明）
-- `scripts/test_DEX_QUOTE.ts` — 呼叫 Uniswap Quoter（path-based）取得 WLTC ↔ USDC 報價（預設 1 WLTC）。用於檢查 Quoter 路徑及 fee=3000 的單跳回傳。
-- `scripts/4_interact_amm_viem.ts` — 範例互動流程：查詢報價、`ensureAllowance` 授權流程、使用 Universal Router 進行交換、監聽交易回執（示範 bigint 上溢計算與安全的 approve/allowance 流程）。
-- `scripts/5_auction_viem.ts` — 拍賣互動腳本（出價、重置、提取等）。
-
-前端重點說明
-- `frontend/src/utils/contracts.ts`：集中 ABI 與合約實例化函式（`getReadonlyContract`, `getWalletContract`）。
-- 重要視圖：`Mint.vue`, `AmmSwapLeverage.vue`, `AmmSwapStable.vue`, `Auction.vue`, `Liquidation.vue`, `Oracle.vue` 等，已做部分遷移以使用合約 helper。
-- 注意 ESM 匯入：部分檔案要求相對路徑加 `.js` 副檔名（已在專案中修正若干匯入），在修改時保持 `.js` 副檔名以避免 Vite/TS 錯誤。
-
-數值精度與授權建議
-- 專案內使用 `bigint` 表示 token 數量（避免 Number 损失精度）。
-- 計算上浮（如 slippage）時請使用整數向上取整，例如：
-
-```ts
-// ceil(amount * (100 + pct) / 100)
-const pct = 5n
-const x = (amount * (100n + pct) + 99n) / 100n
-```
-
-- 授權（allowance）最佳實踐：讀取現有 allowance；若不足，且 allowance > 0，先 approve(0) 等待回執，再 approve(需要值)。專案內腳本與前端已採用此模式。
-
-如何使用常見功能（範例命令）
-
-- 查詢 Uniswap 報價（Quoter）：
-
-```powershell
-npx tsx scripts/test_DEX_QUOTE.ts
-```
-
-- 執行 AMM+拍賣互動腳本（範例）：
-
-```powershell
-npx tsx scripts/4_interact_amm_viem.ts
-```
-
-- 執行單元測試：
-
-```powershell
-npx hardhat test test/AMMSwap.test.ts
-```
-
 安全上傳到 GitHub（建議流程）
 
 1. 確認 `.gitignore` 包含：`.env*`, `node_modules/`, `artifacts/`, `ignition/deployments/`, `cache/` 等。
