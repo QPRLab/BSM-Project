@@ -63,11 +63,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         uint256 balance;               // 余额
         LeverageType leverageType;     // 杠杆比例
         uint8 riskLevel;               // 风险等级
-        bool isLiquidated;             // 是否已被清算
-        bool isUnderLiquidation;       // 是否正被清算
-        bool isFreezed;                // 是否被冻结，当杠杆币被清算时冻结，此时用户无法铸造该ID的新杠杆币，当用户提取出清算获得的稳定币后，解冻
-        uint256 stableNums;            // 清算后得到的稳定币数量
-        uint256 auctionId;             // 关联的拍卖ID
+        bool isFreezed;                // 是否被冻结 币在清算时被冻结，拍卖完成时解冻。冻结期间无法铸币和销毁
     }
     mapping(address => mapping(uint256 => UserLiquidationStatus)) public userLiquidationStatus; // userLiquidationStatus[user][tokenId];
 
@@ -229,52 +225,47 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         // 获取用户持仓
         uint256 balance = leverageToken.balanceOfInWei(user, tokenId);
         require(balance > 0, "No tokens to liquidate");
-        require(userLiquidationStatus[user][tokenId].isFreezed == false, "The Tokens have been freezed");
-        require(userLiquidationStatus[user][tokenId].isUnderLiquidation == false, "Already under liquidation");
+        require(userLiquidationStatus[user][tokenId].isFreezed == false, "The token is under liquidation");
         
         // 检查净值是否低于清算阈值
         uint256 nav = _calculateNetAssetValue(user, tokenId);
         require(nav < globalConfig.liquidationThreshold, "NAV above liquidation threshold");
 
+        // 计算将要销毁的稳定币价值
+        uint256 valueToBeBurned=_calculateValueToBeBurned(user, tokenId, balance);
+        require(valueToBeBurned > 0, "Null auction");
 
-        // 计算清算数量
-        (uint256 underlyingAmount, uint256 underlyingValue) = _calculateLiquidationAmount(user, tokenId, balance, nav);
-        require(underlyingAmount > 0, "Null auction");
-        require( underlyingValue <= 2**255 && underlyingAmount<= 2**255, "Overflow");
+        // 计算用户残值 
+        uint256 underlyingValueToUser; 
+        if (wmul(nav, balance) > globalConfig.penalty) {
+            underlyingValueToUser = wmul(nav, balance) - globalConfig.penalty; 
+        } else {
+            underlyingValueToUser = 0;
+        }
         
-        
-        // // 创建荷兰式拍卖
-        auctionId = auction.startAuction(underlyingAmount, user, tokenId, kpr);
+        // 销毁杠杆币，并处理利息
+        custodian.burnToken(user, tokenId, balance);
 
-        
         // 更新用户状态
-        userLiquidationStatus[user][tokenId].isUnderLiquidation = true;
         userLiquidationStatus[user][tokenId].riskLevel = 4; // 清算中
-        userLiquidationStatus[user][tokenId].auctionId = auctionId;
         userLiquidationStatus[user][tokenId].isFreezed = true;
+        userLiquidationStatus[user][tokenId].balance =0 ;
 
-        // 销毁杠杆币
-        _burnLeverageToken(user, tokenId, balance, underlyingAmount);
-       
+        // 创建荷兰式拍卖
+        auctionId = auction.startAuction(valueToBeBurned, globalConfig.penalty, user, tokenId, underlyingValueToUser, kpr);
+
         return auctionId;
     }
 
-    /**
-     * @dev 销毁杠杆币
-     */
-    function _burnLeverageToken(address user, uint256 tokenId, uint256 balance, uint256 underlyingAmount) internal {
-        custodian.burnToken(user, tokenId, balance, underlyingAmount);
-    }
 
     /**
-     * @dev 计算清算数量
+     * @dev 计算清算价值
      */
-    function _calculateLiquidationAmount(
+    function _calculateValueToBeBurned(
         address user,
         uint256 tokenId,
-        uint256 balance,
-        uint256 nav
-    ) internal view returns (uint256 underlyingAmount, uint256 underlyingValue) {
+        uint256 balance
+    ) internal view returns ( uint256 valueToBeBurned) {
         LeverageType leverage = userLiquidationStatus[user][tokenId].leverageType;
         uint8 leverageLevel;
         if (leverage==LeverageType.CONSERVATIVE){
@@ -284,10 +275,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         } else if (leverage==LeverageType.AGGRESSIVE ){
             leverageLevel = 1;
         }
-        underlyingValue = wmul ( balance, (nav + 1*PRECISION_UNIT/leverageLevel) );
-        (uint256 currentPrice, , bool isValid) = custodian.getLatestPriceView();
-        require(currentPrice>0 && isValid, 'Invalid oracle price (<=0)!');
-        underlyingAmount = wdiv( underlyingValue , currentPrice );
+        valueToBeBurned = wmul ( balance, 1*PRECISION_UNIT/leverageLevel );
     }
 
     /**
@@ -300,55 +288,14 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev 每次有人拍得underlying更新用户状态
+     * @dev 当拍卖结束时，更新清算状态
      */
-    function _afterEachBid(address usr, uint256 tokenID, uint256 numStable, uint256 underlyingAmount) external onlyRole(AUCTION_ROLE) {
-        userLiquidationStatus[usr][tokenID].stableNums = numStable;
-
-        if (underlyingAmount==0 && userLiquidationStatus[usr][tokenID].isUnderLiquidation == true){
-            userLiquidationStatus[usr][tokenID].isLiquidated = true;
-            userLiquidationStatus[usr][tokenID].isUnderLiquidation = false;
-        }
-
-    }
-    /**
-     * @dev 清算完成后，被清算用户提取稳定币
-     */
-    function withdrawStable(address usr, uint256 tokenID) external {
-        require (userLiquidationStatus[usr][tokenID].isLiquidated == true && 
-         userLiquidationStatus[usr][tokenID].isUnderLiquidation == false, 'Withdraw not ready');
-
-        LeverageType leverage = userLiquidationStatus[usr][tokenID].leverageType;
-        uint8 leverageLevel;
-        if (leverage==LeverageType.CONSERVATIVE){
-            leverageLevel = 8;
-        } else if (leverage==LeverageType.MODERATE){
-            leverageLevel = 4;
-        } else if (leverage==LeverageType.AGGRESSIVE ){
-            leverageLevel = 1;
-        }
-        uint256 penalty = wmul(userLiquidationStatus[usr][tokenID].balance, globalConfig.penalty);
-        uint256 stableEarned = userLiquidationStatus[usr][tokenID].stableNums;
-        uint256 stableAmountToBeBurned = wmul(userLiquidationStatus[usr][tokenID].balance, 1*PRECISION_UNIT/leverageLevel);
-        uint256 amountToUser = 0;
-        if ( stableEarned > (penalty + stableAmountToBeBurned) ){
-            amountToUser = stableEarned - penalty - stableAmountToBeBurned;
-            custodian.withdrawAfterLiquidation(usr, tokenID, amountToUser, penalty, stableAmountToBeBurned);
-        } else if (stableEarned < stableAmountToBeBurned ){
-            emit NoLeftAfterLiquidation('There is no left to be withdrawn after penalty!');
-            custodian.withdrawAfterLiquidation(usr, tokenID, 0, 0, stableAmountToBeBurned);
-            emit DEFICIT((stableAmountToBeBurned - stableEarned));
-        } else {
-            emit NoLeftAfterLiquidation('There is no left to be withdrawn after penalty!');
-            custodian.withdrawAfterLiquidation(usr, tokenID, 0, stableEarned -stableAmountToBeBurned, stableAmountToBeBurned);
-        }
-        // 狀態重置
+    function _afterAuction(address usr, uint256 tokenID, uint256 soldUnderlyingAmount, int256 underlyingAmount) external onlyRole(AUCTION_ROLE) {
         userLiquidationStatus[usr][tokenID].isFreezed = false; //解冻
-        userLiquidationStatus[usr][tokenID].stableNums = 0; //重置stableNums
-        userLiquidationStatus[usr][tokenID].auctionId = 0; //重置auctionID
         userLiquidationStatus[usr][tokenID].riskLevel = 0; //重置riskLevel
-        userLiquidationStatus[usr][tokenID].balance = 0; //重置balance
+        custodian.updateDeficit(soldUnderlyingAmount, underlyingAmount);
     }
+
 
     // ================= 下折功能 =================
 
