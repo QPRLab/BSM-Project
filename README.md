@@ -1,120 +1,210 @@
-````markdown
-# Sample Hardhat 3 Beta Project (`node:test` and `viem`)
+# BSM Project — LTC-backed Leveraged Stablecoin System
 
-This project showcases a Hardhat 3 Beta project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+This repository contains a Hardhat + TypeScript project implementing an LTC-backed leveraged stablecoin system. It includes Solidity contracts (core engine, AMM, auctions/liquidations, interest manager), scripts for deployment and interaction, unit tests, and a Vue 3 frontend.
 
-To learn more about the Hardhat 3 Beta, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3 Beta](https://hardhat.org/hardhat3-beta-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+Inspired by the concept of structure funds, we split a virtual currency(e.g., LTC)into two components: a **Stable Token (S)** and a **Leverage Token (L)**.
+- The **Stable Token (S)** always maintains a value of 1. Holders can use it in relevant application scenarios or stake it in our AMM pool to earn returns.
+- The **Leverage Token (L)** captures the gains of the underlying asset, bears its risks, and pays interest fees to the system.
 
-## Project Overview
+Within our protocol, the Stable Token is implemented as a standard **ERC‑20** token. To enable different leverage attributes, the Leverage Token contract extends the **ERC‑1155** standard.
 
-This example project includes:
+During the minting process, users must specify two parameters:
+1. **Leverage Type** — options are _Conservative_, _Moderate_, and _Aggressive_. These correspond to S:L minting ratios of **1:8**, **1:4**, and **1:1**, respectively.    
+2. **Mint Price** — the price of the underlying asset at which the user chooses to mint.
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+![Leverage Types](docs//assets/LeverageTypes.png)
 
-## Usage
+If a user supplies an amount $M$ of the underlying asset and selects a minting price $P_0$, the corresponding formula is:
 
-### Running Tests
+Initially, ![formula at t0](docs/assets/formula_0.png)
 
-To run all the tests in the project, execute the following command:
+When underlying price changes to Pt, ![formula at t](docs/assets/formula_t.png)
 
-```shell
+For the three different leverage types, we obtain, ![nav](docs/assets/nav.png)
+
+In addition to the core tokenization mechanism, our protocol introduces an Automated Market Maker (AMM) pool to facilitate liquidity and user interaction. The primary functions of this AMM are twofold: (i) enabling efficient exchange between the Stable Token (S) and USDC, and (ii) supporting exchange between the Leverage Token (L) and USDC. Structurally, the AMM pool is composed of Stable Tokens and USDC, and its pricing curve adheres to the stable swap invariant. This design ensures low-slippage trading for assets of similar value and enhances capital efficiency. The implementation draws upon the principles established in Michael Egorov’s seminal work, StableSwap – Efficient Mechanism for Stablecoin Liquidity, which provides the theoretical foundation for stablecoin-focused AMM architectures. By integrating this invariant into our system, we aim to deliver a robust and scalable liquidity layer that supports both stability and leverage within the ecosystem.
+
+To preserve the stability of the **S token**, the system initiates a liquidation auction of the underlying assets once the net asset value (NAV) of the **L token** falls below a predefined threshold during a sustained decline in the reference asset. Under the auction mechanism specified by the protocol, any participant may bid for the underlying assets at a price lower than the prevailing market value. Bidders pay in S tokens and receive a portion of the underlying assets; meanwhile, the system retains part of the proceeds as a penalty reserve fund for risk management, while the remainder is returned to the liquidated party. Throughout this process, the liquidated party inevitably incurs partial losses due to liquidation.
+
+In the second iteration of this project, we introduce a **downward adjustment mechanism** designed to mitigate liquidation risk before the L token NAV reaches the threshold. Specifically, users may choose either:
+1. To increase the quantity of underlying assets, or
+2. To reduce the number of L tokens in circulation.
+Through either operation, the NAV of the L token is forcibly reset to 1, thereby restoring stability and preventing liquidation.
+
+
+---
+
+## Table of contents
+- Quick start
+- Contracts (brief)
+- Scripts
+- Testing
+- Frontend
+- Deployment & verification
+- CI recommendations
+- Security & push checklist
+- Contributing
+- License
+
+---
+
+## Quick start (developer)
+
+Prerequisites
+- Node.js >= 18
+- npm or pnpm
+- PowerShell (Windows) — scripts provided for Windows
+
+Install
+
+```pwsh
+cd "c:\Files\QPRLib_HK\Defi Project\BSM Project"
+npm ci
+```
+
+Typecheck
+
+```pwsh
+npx tsc --noEmit
+```
+
+Run tests
+
+```pwsh
 npx hardhat test
+# Run a single test file:
+npx hardhat test test/CustodianFixed.test.ts
 ```
 
-You can also selectively run the Solidity or `node:test` tests:
+Run frontend (optional)
 
-```shell
-npx hardhat test solidity
-npx hardhat test nodejs
+```pwsh
+cd frontend
+npm ci
+npm run dev
 ```
 
-### Make a deployment to Sepolia
+---
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
+## Contracts
 
-To run the deployment to a local chain:
+- `CustodianFixed.sol` — Core coordinator. Central protocol contract that holds underlying collateral, mints/burns StableToken and MultiLeverageToken (via calls to the token contracts), and coordinates interest, liquidation, and auction flows. It is the authority that the frontend and AMM interact with to create S/L positions.
 
-```shell
-```markdown
-1.  部署tokenModules模組：
-	執行命令：npx hardhat ignition deploy ignition/modules/tokenModules.ts --network sepolia
-	命令說明：部署以下合約 WLTCMock, USDCMock, StableToken, MultiLeverageToken 四個合約
-2.  部署coreModules模組： 
-	執行命令：npx hardhat ignition deploy ignition/modules/coreModules.ts --network sepolia
-	命令說明：部署以下合約 InterestManager, LTCPriceOracle, CustodianFixed, LinearDecrease, AuctionManager, LiquidationManager
-3.  鑄幣 USDC, WLTC 合約： 
-	執行命令：npx tsx scripts/1_mint_USDCWLTCtokens_allusers_viem.ts 
-	命令說明：測試環境，部署者給開發組四個人鑄幣 USDC(12000萬枚) WLTC(100萬枚)
-			 僅有部署者可以鑄幣 WLTC, USDC
-4.  鑄幣 S token & L token:
-	執行命令：npx tsx scripts/2_mint_SLtokens_viem.ts 
-	命令說明：部署者給自己帳戶鑄幣，三種槓桿(CONSERVATIVE,MODERATE,AGGRESSIVE)分別鑄幣24.5萬枚 WLTC, 24.5萬枚 WLTC, 1萬枚 WLTC；鑄幣價格 P0=120;
-			 當前持倉：WLTC(50萬枚)，USDC(12000萬枚), stable(9746666枚)，leverage(id5=2612萬，id8=2352萬，id2=60萬)
-			 所有用戶均可呼叫 CustodianFixed.mint 使用自己帳戶的 WLTC 給自己鑄幣，mint 前需要 approve 給 CustodianFixed 相應數量的 WLTC
-5.  在 Uniswap 上創建 WLTC-USDC 的池子：
-	池子參數：V3 position; token0:WLTC, token1:USDC(順序由 Uniswap 決定), fee:0.3%, full range;
-	流動性參數：注入 WLTC(30萬枚) 和 USDC(3600萬枚), WLTC 初始價格為 P0=120；  帳戶剩餘 20萬 WLTC, 8400萬 USDC
-	部署後地址：
-		POOL:   0xCa250B562Beb3Be4fC75e79826390F9f14c622d0(每次重新部署會變化)
-		Router: 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b(不變)
-		Quoter: 0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3(不變)
-6.  部署 ammModules 模組：
-	執行命令：npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
-	命令說明：部署以下合約 AMMLiquidaity, AMMSwap
-7.  合約驗證：
-	執行命令：npx tsx scripts/3_verify_allContracts_viem.ts
-8.  合約交互：
-	檢驗交易：
-		執行命令：npx tsx scripts/4_interact_amm_viem.ts
-		命令說明：
-			若流動性不足，則添加流動性, 注入流動性：500萬 USDC, 500萬 stable; 需要向 AMMLiquidity 中 approve 相應數量的 USDC 和 stable
-			若 Oracle 價格無效，使用更新為 Uniswap 中當前 WLTC 的價格;
-			Stable token <--> USDC token   (基於 AMM)
-			Leverage token <--> USDC token (基於 AMM + DEX)
-	檢驗清算：
-		執行命令：npx tsx scripts/5_auction_viem.ts
-		命令說明：
-			給 CustodianFixed 轉入 10 萬個 stable, 用於獎勵
+mint : User supplies underlying token (WLTC) to mint S (StableToken) and L (Leverage token) according to a target mint price and leverage level.
 
-```
-安全上傳到 GitHub（建議流程）
+burnFromUser : User burns a percentage of a given L token ID to redeem underlying and cause S to be burned.
 
-1. 確認 `.gitignore` 包含：`.env*`, `node_modules/`, `artifacts/`, `ignition/deployments/`, `cache/` 等。
-2. 若曾錯誤提交敏感檔案，請先用 `git rm --cached <file>` 刪除索引並重新 commit，或使用 `git filter-repo` 清理歷史（須小心）。
-3. 倉庫包含輔助腳本 `create_and_push.ps1`（檢查追蹤的敏感檔並引導使用 `gh` 或遠端 URL 推送）。
+- `StableToken.sol` — StableToken.sol is a simple ERC-20 token contract representing the protocol's stable token (symbol S). It provides minting and burning functionality restricted to a designated custodian contract and includes owner controls to set that custodian.
 
-示例（使用 GitHub CLI）
+- `MultiLeverageToken.sol` — MultiLeverageToken.sol is an ERC1155-based contract that implements the protocol’s leverage tokens (L tokens). It supports two kinds of tokens: pre-defined static tokens (IDs 1–9) and on-demand dynamic tokens (IDs ≥ 10). The contract stores metadata, value/mint-price for each token, and restricts mint/burn to a protocol custodian contract.
 
-```powershell
-# 需先安裝並登入 gh
-.\create_and_push.ps1 -RepoName "BSM-Project"
-```
+- `AMMSwap.sol` — Implements swap logic and the higher-level flows between StableToken, USDC, underlying (WLTC), and leverage tokens. Integrates a StableSwap-like pool for Stable/USDC and uses Uniswap V3 (UniversalRouter + QuoterV2) for underlying <> USDC trades when buying/selling leverage tokens. Also orchestrates mint/burn via `CustodianFixed`.
 
-或手動建立遠端並推送：
+- `AMMLiquidity.sol` — On-chain liquidity pool and `LPToken` management; exposes pool swap primitives used by `AMMSwap`.
+- `InterestManager.sol` — Tracks accrued interest per L position and supports interest collection/withdrawal.
+- `LiquidationManager.sol` / `AuctionManager.sol` — Liquidation lifecycle and Dutch-style auctions for collateral.
 
-```powershell
-git remote add origin <git@github.com:youruser/yourrepo.git>
-git branch -M main
-git push -u origin main
+For details, read the contracts in `contracts/` and the per-contract summaries in the docs folder.
+
+---
+
+## Scripts
+
+Scripts are in `scripts/` and include examples for minting mocks, interacting with the AMM, running auctions, and verifying contracts. Examples:
+
+- `scripts/1_mint_USDCWLTCtokens_viem.ts` — mint mock tokens for tests
+- `scripts/2_mint_SLtokens_viem.ts` — mint S and L tokens for basic scenarios
+- `scripts/3_verify_allContracts_viem.ts` — Etherscan verification helper
+- `scripts/4_interact_amm_viem.ts` — end-to-end AMM interaction example
+- `scripts/5_auction_viem.ts` — auction flow example
+
+Read headers of each script for usage details and required environment variables.
+
+---
+
+## Testing
+
+- Unit tests are in `test/` (Hardhat + viem style). Use `npx hardhat test`.
+- Mocks provided: `QuoterV2Mock`, `UniversalRouterMock`, `WLTCMock`, `USDCMock` — use them for deterministic DEX behavior.
+- Recommended tests to run before push: all unit tests, and targeted integration tests for AMM/auction flows.
+
+---
+
+## Frontend
+
+- Vue 3 + Vite project lives in `frontend/`.
+- Key helper: `frontend/src/utils/contracts.ts` centralizes ABI loading and read/write contract factories.
+- Build and run via Vite during development: `cd frontend && npm run dev`.
+
+---
+
+## Deployment & verification
+
+- Use Hardhat ignition scripts (in `ignition/`) or the `scripts/` helpers to deploy modules.
+- Example (local/sepolia flow):
+
+```pwsh
+npx hardhat ignition deploy ignition/modules/tokenModules.ts --network sepolia
+npx hardhat ignition deploy ignition/modules/coreModules.ts --network sepolia
+# then amm modules
+npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
 ```
 
-疑難排解（常見錯誤）
-- 如果前端啟動時出現 `Cannot invoke an object which is possibly 'undefined'`，通常是未 guard contract.read 函數。使用 guard：
+- Verify contracts with `npx hardhat verify` or `scripts/3_verify_allContracts_viem.ts`.
 
-```ts
-const fn = (contract as any)?.read?.someMethod
-if (typeof fn === 'function') await fn([...args])
-```
+---
 
-- 若出現 `Relative import paths need explicit file extensions`，請確保本地變更中相對匯入含 `.js` 副檔名。
+## Continuous integration (recommended)
 
-還需要我做什麼？
-- 我可以：
-	- 在此環境執行 `npx hardhat test` 或 `cd frontend && npm run dev` 幫你排查 runtime 問題（回覆 “運行測試”）。
-	- 幫你把倉庫安全推上 GitHub（需 `gh` 已安裝或你提供遠端 URL，回覆 “推送倉庫”）。
+- Run on PRs: `npm ci`, `npx tsc --noEmit`, `npx hardhat test`.
+- Keep secrets (RPC keys, private keys) in GitHub Secrets. Do not commit `.env` files.
+- Example workflow: run typecheck + unit tests on push/PR; run E2E in a protected branch or separate job.
 
-最後更新：2025-11-22
+---
+
+## Security & push checklist
+
+Before pushing to remote (public GitHub):
+
+1. Remove secrets and large artifacts:
+   - `git rm --cached path/to/secret`
+   - Ensure `.gitignore` contains `.env*`, `ignition/deployments/`, `artifacts/`, `node_modules/`, `*.pptx`.
+2. Run tests and typecheck locally:
+   - `npx tsc --noEmit` and `npx hardhat test`
+3. Scan for secrets with a tool (git-secrets, truffleHog) or the provided `create_and_push.ps1` script.
+4. Create a meaningful commit and PR with description and CI results.
+
+Security notes:
+- Do not store private keys or mnemonic phrases in the repo.
+- Use role-based access in contracts (ADMIN_ROLE, AUCTION_ROLE, etc.) and restrict privileged calls in production.
+
+---
+
+## Contributing
+
+- Please open issues and PRs. Include unit tests for any contract logic changes.
+- Code style: TypeScript + Prettier for frontend/scripts; prefer small, focused commits.
+
+---
+
+## License
+
+This project does not include a license file by default. Add a `LICENSE` file (e.g., MIT) if you intend to open-source this repository.
+
+---
+
+## Contacts / Maintainers
+
+- Add project maintainers, primary contacts, and security disclosure contact here.
+
+---
+
+## Known issues & roadmap
+
+- AMMSwap buy-flow requires careful ordering: ensure USDC/S balances are present on-contract before calling `UniversalRouter`. See `AMMSwap` TODOs and unit tests.
+- Tests: `test/CustodianFixed.test.ts` exists but may require iteration to pass in some environments; run unit tests and open issues for failing cases.
+
+---
+
+If you want I can commit this `README.md` for you and optionally add a CI workflow and `CONTRIBUTING.md`/`SECURITY.md` files. 
 
