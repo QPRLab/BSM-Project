@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../tokens/StableToken.sol";
 import "./LiquidationManager.sol";
-import "../interfaces/IAbacus.sol";
+import "./abaci.sol";
 
 // 方便无本金拍卖
 interface ClipperCallee {
@@ -43,7 +43,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     CustodianFixed public immutable custodian;        // 核心引擎
     
     LiquidationManager  public liquidationManager;  // 清算管理模块
-    IAbacus  public priceCalculator;     // 当前价格计算器 (from Abacus)
+    LinearDecrease  public priceCalculator;     // 当前价格计算器 (from Abacus)
 
     // 拍卖参数结构体 - 优化存储布局
     struct AuctionParams {
@@ -172,7 +172,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
 
         liquidationManager = LiquidationManager(liquidationManager_);
         grantCallerRole(liquidationManager_);
-        priceCalculator = IAbacus(priceCalculator_);
+        priceCalculator = LinearDecrease(priceCalculator_);
 
         auctionParams.priceMultiplier = priceMultiplier_;
         auctionParams.resetTime = resetTime_;
@@ -186,7 +186,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         // require(hasRole(ADMIN_ROLE, msg.sender), "Auction/not-admin");
 
         if      (parameter == "priceMultiplier") auctionParams.priceMultiplier = value;
-        else if (parameter == "resetTime")       auctionParams.resetTime = value;           // 拍卖重置前的时间
+        else if (parameter == "resetTime")      {auctionParams.resetTime = value;  priceCalculator.file(value) ;}  // 拍卖重置前的时间
         else if (parameter == "minAuctionAmount") auctionParams.minAuctionAmount = value;           // 最小购买金额
         else if (parameter == "priceDropThreshold") auctionParams.priceDropThreshold = value; // 拍卖重置前的价格下降百分比
         else if (parameter == "percentageReward") auctionParams.percentageReward = value;   // 激励百分比
@@ -199,7 +199,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     function setAddress(bytes32 parameter, address addr) external onlyRole(ADMIN_ROLE) nonReentrant {
         // require(hasRole(ADMIN_ROLE, msg.sender), "Auction/not-admin");
         if (parameter == "liquidationManager") { liquidationManager = LiquidationManager(addr); grantCallerRole(addr);}
-        else if (parameter == "priceCalculator") priceCalculator = IAbacus(addr);
+        else if (parameter == "priceCalculator") priceCalculator = LinearDecrease(addr);
         else revert("Unrecognized parameter");
         emit AddressChanged(parameter, addr);
     }

@@ -18,6 +18,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 interface Abacus {
     // 1st arg: initial price               [wad]
@@ -26,38 +27,52 @@ interface Abacus {
     function price(uint256, uint256) external view returns (uint256);
 }
 
-contract LinearDecrease is Abacus {
+contract LinearDecrease is AccessControl, Abacus {
 
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth { wards[usr] = 1; emit Rely(usr); }
-    function deny(address usr) external auth { wards[usr] = 0; emit Deny(usr); }
-    modifier auth {
-        require(wards[msg.sender] == 1, "LinearDecrease/not-authorized");
-        _;
+
+    // --- 权限管理 ---
+    bytes32 public constant CALLER_ROLE = keccak256("CALLER_ROLE");
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    
+    function grantCallerRole(address account) onlyRole(ADMIN_ROLE) public {
+        grantRole(CALLER_ROLE, account);
+        emit CallerAccessGranted(account);
+    }  
+    function revokeCallerRole(address account) onlyRole(ADMIN_ROLE) public {
+        revokeRole(CALLER_ROLE, account);
+        emit CallerAccessRevoked(account);
     }
+    function grantAdminRole(address account) onlyRole(ADMIN_ROLE) public {
+        grantRole(ADMIN_ROLE, account);
+        emit AdminAccessGranted(account);
+    }
+    function revokeAdminRole(address account) onlyRole(ADMIN_ROLE) public {
+        revokeRole(ADMIN_ROLE, account);
+        emit AdminAccessRevoked(account);
+    }
+
+    // --- 事件 ---
+    event AdminAccessGranted(address indexed user);
+    event CallerAccessGranted(address indexed user);    
+    event AdminAccessRevoked(address indexed user);
+    event CallerAccessRevoked(address indexed user);
 
     // --- Data ---
     uint256 public tau;  // Seconds after auction start when the price reaches zero [seconds]
 
-    // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
-
-    event File(bytes32 indexed what, uint256 data);
-
     // --- Init ---
-    constructor(uint256 _tau)  {
-        tau = _tau;
-        wards[msg.sender] = 1;
-        emit Rely(msg.sender);
+    constructor(uint256 _tau, address auctionAddr) {
+        // 设置角色 (权限管理)
+        tau=_tau;
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
+        grantCallerRole(auctionAddr);
+        emit AdminAccessGranted(msg.sender);
     }
 
     // --- Administration ---
-    function file(bytes32 what, uint256 data) external auth {
-        if (what ==  "tau") tau = data;
-        else revert("LinearDecrease/file-unrecognized-param");
-        emit File(what, data);
+    function file( uint256 data) external onlyRole(CALLER_ROLE) {
+        tau = data;
     }
 
     // --- Math ---
@@ -86,172 +101,3 @@ contract LinearDecrease is Abacus {
     }
 }
 
-contract StairstepExponentialDecrease is Abacus {
-
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth { wards[usr] = 1; emit Rely(usr); }
-    function deny(address usr) external auth { wards[usr] = 0; emit Deny(usr); }
-    modifier auth {
-        require(wards[msg.sender] == 1, "StairstepExponentialDecrease/not-authorized");
-        _;
-    }
-
-    // --- Data ---
-    uint256 public step; // Length of time between price drops [seconds]
-    uint256 public cut;  // Per-step multiplicative factor     [wad]
-
-    // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
-
-    event File(bytes32 indexed what, uint256 data);
-
-    // --- Init ---
-    // @notice: `cut` and `step` values must be correctly set for
-    //     this contract to return a valid price
-    constructor() public {
-        wards[msg.sender] = 1;
-        emit Rely(msg.sender);
-    }
-
-    // --- Administration ---
-    function file(bytes32 what, uint256 data) external auth {
-        if      (what ==  "cut") require((cut = data) <= WAD, "StairstepExponentialDecrease/cut-gt-WAD");
-        else if (what == "step") step = data;
-        else revert("StairstepExponentialDecrease/file-unrecognized-param");
-        emit File(what, data);
-    }
-
-    // --- Math ---
-    uint256 constant WAD = 10 ** 18;
-    function wmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        z = x * y;
-        require(y == 0 || z / y == x);
-        z = z / WAD;
-    }
-    // optimized version from dss PR #78
-    function wpow(uint256 x, uint256 n, uint256 b) internal pure returns (uint256 z) {
-        assembly {
-            switch n case 0 { z := b }
-            default {
-                switch x case 0 { z := 0 }
-                default {
-                    switch mod(n, 2) case 0 { z := b } default { z := x }
-                    let half := div(b, 2)  // for rounding.
-                    for { n := div(n, 2) } n { n := div(n,2) } {
-                        let xx := mul(x, x)
-                        if shr(128, x) { revert(0,0) }
-                        let xxRound := add(xx, half)
-                        if lt(xxRound, xx) { revert(0,0) }
-                        x := div(xxRound, b)
-                        if mod(n,2) {
-                            let zx := mul(z, x)
-                            if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0,0) }
-                            let zxRound := add(zx, half)
-                            if lt(zxRound, zx) { revert(0,0) }
-                            z := div(zxRound, b)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // top: initial price [wad]
-    // dur: seconds since the auction has started
-    // step: seconds between a price drop
-    // cut: cut encodes the percentage to decrease per step.
-    //   For efficiency, the values is set as (1 - (% value / 100)) * WAD
-    //   So, for a 1% decrease per step, cut would be (1 - 0.01) * WAD
-    //
-    // returns: top * (cut ^ dur) [wad]
-    function price(uint256 top, uint256 dur) override external view returns (uint256) {
-        return wmul(top, wpow(cut, dur / step, WAD));
-    }
-}
-
-// While an equivalent function can be obtained by setting step = 1 in StairstepExponentialDecrease,
-// this continous (i.e. per-second) exponential decrease has be implemented as it is more gas-efficient
-// than using the stairstep version with step = 1 (primarily due to 1 fewer SLOAD per price calculation).
-contract ExponentialDecrease is Abacus {
-
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth { wards[usr] = 1; emit Rely(usr); }
-    function deny(address usr) external auth { wards[usr] = 0; emit Deny(usr); }
-    modifier auth {
-        require(wards[msg.sender] == 1, "ExponentialDecrease/not-authorized");
-        _;
-    }
-
-    // --- Data ---
-    uint256 public cut;  // Per-second multiplicative factor [wad]
-
-    // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
-
-    event File(bytes32 indexed what, uint256 data);
-
-    // --- Init ---
-    // @notice: `cut` value must be correctly set for
-    //     this contract to return a valid price
-    constructor() public {
-        wards[msg.sender] = 1;
-        emit Rely(msg.sender);
-    }
-
-    // --- Administration ---
-    function file(bytes32 what, uint256 data) external auth {
-        if      (what ==  "cut") require((cut = data) <= WAD, "ExponentialDecrease/cut-gt-WAD");
-        else revert("ExponentialDecrease/file-unrecognized-param");
-        emit File(what, data);
-    }
-
-    // --- Math ---
-    uint256 constant WAD = 10 ** 18;
-    function wmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        z = x * y;
-        require(y == 0 || z / y == x);
-        z = z / WAD;
-    }
-    // optimized version from dss PR #78
-    function wpow(uint256 x, uint256 n, uint256 b) internal pure returns (uint256 z) {
-        assembly {
-            switch n case 0 { z := b }
-            default {
-                switch x case 0 { z := 0 }
-                default {
-                    switch mod(n, 2) case 0 { z := b } default { z := x }
-                    let half := div(b, 2)  // for rounding.
-                    for { n := div(n, 2) } n { n := div(n,2) } {
-                        let xx := mul(x, x)
-                        if shr(128, x) { revert(0,0) }
-                        let xxRound := add(xx, half)
-                        if lt(xxRound, xx) { revert(0,0) }
-                        x := div(xxRound, b)
-                        if mod(n,2) {
-                            let zx := mul(z, x)
-                            if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0,0) }
-                            let zxRound := add(zx, half)
-                            if lt(zxRound, zx) { revert(0,0) }
-                            z := div(zxRound, b)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // top: initial price [wad]
-    // dur: seconds since the auction has started
-    // cut: cut encodes the percentage to decrease per second.
-    //   For efficiency, the values is set as (1 - (% value / 100)) * WAD
-    //   So, for a 1% decrease per second, cut would be (1 - 0.01) * WAD
-    //
-    // returns: top * (cut ^ dur) [wad]
-    function price(uint256 top, uint256 dur) override external view returns (uint256) {
-        return wmul(top, wpow(cut, dur, WAD));
-    }
-}
