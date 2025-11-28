@@ -283,7 +283,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
      */
     function _calculateNetAssetValue(address user, uint256 tokenId) internal view returns (uint256 nav) {
         ( , , uint256 navInWei, , , , , ) = custodian.getSingleLeverageTokenNavV2(user, tokenId);
-        require(navInWei>0, 'Invalid Net Value!'); 
+        require(navInWei>=0, 'Invalid Net Value!'); 
         nav = navInWei; // 返回除息净值
     }
 

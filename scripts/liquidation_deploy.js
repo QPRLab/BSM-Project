@@ -19,7 +19,7 @@ const TIME_PARAMS = {
 
 // 拍卖管理器参数
 const AUCTION_PARAMS = {
-  PRICE_MULTIPLIER: "1.2",           // 起始价格乘数
+  PRICE_MULTIPLIER: "1",           // 起始价格乘数
   RESET_TIME: TIME_PARAMS.TWO_HOURS,  // 重置时间
   MIN_AUCTION_AMOUNT: "1",          // 最小拍卖金额
   PRICE_DROP_THRESHOLD: "0.8",        // 价格下降阈值

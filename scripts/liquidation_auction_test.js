@@ -126,6 +126,8 @@ async function main() {
   await stableTokenContract.connect(deployer).transfer(bidder1.address, stableTokenAmount);
   await stableTokenContract.connect(deployer).transfer(bidder2.address, stableTokenAmount);
 
+  const originalDeficit = await custodianContract.deficit();
+
 
   console.log(`    竞拍者1 S 代币余额: ${ethers.formatEther(await stableTokenContract.balanceOf(bidder1.address))} S`);
   console.log(`    竞拍者2 S 代币余额: ${ethers.formatEther(await stableTokenContract.balanceOf(bidder2.address))} S`);
@@ -138,8 +140,8 @@ async function main() {
 
   
   const underlyingAmount = ethers.parseEther("5");
-  const mintPrice = ethers.parseEther("120");
-  const leverageType = 1;
+  const mintPrice = ethers.parseEther("100");
+  const leverageType = 2;
 
   console.log("  2.1 被清算用户执行铸币...");
   const mintTx = await custodianContract.connect(liquidatedUser).mint(
@@ -162,9 +164,10 @@ async function main() {
     // 获取净值信息
     const navInfo = await custodianContract.getSingleLeverageTokenNavV2(liquidatedUser.address, tokenId);
     console.log(`      净值信息:`);
-    console.log(`      总净值: ${ethers.formatEther(navInfo[1])}`);
+    console.log(`      净值: ${ethers.formatEther(navInfo[1])}`);
     console.log(`      除息净值: ${ethers.formatEther(navInfo[2])}`);
-    console.log(`      当前价格: ${ethers.formatEther(navInfo[6])}`);
+    console.log(`      Balance: ${ethers.formatEther(navInfo[0])}`);
+    console.log(`      当前LTC价格: ${ethers.formatEther(navInfo[6])}`);
   }
 
 
@@ -176,8 +179,8 @@ async function main() {
 
     // 3.1 设置极低价格来大幅降低净值
     console.log("  3.1 设置极低价格大幅降低净值...");
-    await priceOracleContract.updatePrice(ethers.parseEther("60"));
-    console.log("    📝 设置预言机价格为 60 (触发高风险)");
+    await priceOracleContract.updatePrice(ethers.parseEther("30"));
+    console.log(`    📝 设置预言机价格为 30 (触发高风险)`    );
 
     // 3.2 获取极低价格下的净值
     console.log("  3.2 获取极低价格下净值信息...");
@@ -185,7 +188,8 @@ async function main() {
     console.log(`    极低价格下净值信息:`);
     console.log(`      总净值: ${ethers.formatEther(lowPriceNavInfo[1])}`);
     console.log(`      除息净值: ${ethers.formatEther(lowPriceNavInfo[2])}`);
-    console.log(`      当前价格: ${ethers.formatEther(lowPriceNavInfo[6])}`);
+    console.log(`      Balance: ${ethers.formatEther(lowPriceNavInfo[0])}`);
+    console.log(`      当前LTC价格: ${ethers.formatEther(lowPriceNavInfo[6])}`);
 
 
     // 3.3 检查风险等级
@@ -334,7 +338,6 @@ async function main() {
         console.log(`      冻结状态: ${afterStatus.isFreezed ?  "✅" : "❌"}`);
         console.log(`      风险等级: ${afterStatus.riskLevel}`);
         
-        console.log("    清算成功 ✅");
         
       } catch (error) {
         console.log(`    ❌ 清算失败: ${error.message}`);
@@ -353,6 +356,8 @@ async function main() {
         const auctionStatus = await auctionManagerContract.getAuctionStatus(AuctionID);
         console.log(`    拍卖信息:`);
         console.log(`      剩余拍卖目标: ${ethers.formatEther(auctionInfo.valueToBeBurned)} S`);
+        console.log(`      该次拍卖持有LTC数量: ${ethers.formatEther(auctionInfo.underlyingAmount)} LTC`)
+        console.log(`      当前卖掉的LTC数量: ${ethers.formatEther(auctionInfo.soldUnderlyingAmount)} LTC`)
         console.log(`      原所有者: ${auctionInfo.originalOwner}`);
         console.log(`      Token ID: ${auctionInfo.tokenId}`);
         console.log(`      开始时间: ${auctionInfo.startTime}`);
@@ -370,7 +375,13 @@ async function main() {
     console.log("    检查竞拍者稳定币余额...");
     const stableAmount = ethers.parseEther("1000");
     console.log(`    竞拍者1 S 代币余额: ${ethers.formatEther(await stableTokenContract.balanceOf(bidder1.address))} S`);
+    console.log(`    竞拍者1 LTC 余额: ${ethers.formatEther(await wltcContract.balanceOf(bidder1.address))} LTC`);
     console.log(`    竞拍者2 S 代币余额: ${ethers.formatEther(await stableTokenContract.balanceOf(bidder2.address))} S`);
+    console.log(`    竞拍者2 LTC 余额: ${ethers.formatEther(await wltcContract.balanceOf(bidder2.address))} LTC`);
+    // const wltcAmountBeforeBid_1 = wltcContract.balanceOf(bidder1.address);
+    // const wltcAmountBeforeBid_2 = wltcContract.balanceOf(bidder2.address);
+
+
         
         // 竞拍者授权拍卖合约使用稳定币
         console.log("    竞拍者授权custodian合约...");
@@ -397,6 +408,7 @@ async function main() {
             // 检查拍卖状态
             const auctionInfoAfterPurchase1 = await auctionManagerContract.auctions(AuctionID);
             console.log(`    购买后剩余目标: ${ethers.formatEther(auctionInfoAfterPurchase1.valueToBeBurned)} S`);
+
             
             // 检查竞拍者1获得的WLTC
             const bidder1WLTCBalance = await wltcContract.balanceOf(bidder1.address);
@@ -409,8 +421,8 @@ async function main() {
         // 5.4 竞拍者2购买底层资产
         console.log("  5.4 竞拍者2购买底层资产...");
         try {
-            const maxPurchaseAmount2 = ethers.parseEther("5"); // 最多购买20 WLTC
-            const maxAcceptablePrice2 = ethers.parseEther("80"); // 最高可接受价格101
+            const maxPurchaseAmount2 = ethers.parseEther("10"); // 最多购买10 WLTC
+            const maxAcceptablePrice2 = ethers.parseEther("80"); // 最高可接受价格80
             
             const purchaseTx2 = await auctionManagerContract.connect(bidder2).purchaseUnderlying(
             AuctionID,
@@ -425,6 +437,7 @@ async function main() {
             // 检查拍卖状态
             const auctionInfoAfterPurchase2 = await auctionManagerContract.auctions(AuctionID);
             console.log(`    购买后剩余目标: ${ethers.formatEther(auctionInfoAfterPurchase2.valueToBeBurned)} S`);
+
             
             // 检查竞拍者2获得的WLTC
             const bidder2WLTCBalance = await wltcContract.balanceOf(bidder2.address);
@@ -433,6 +446,25 @@ async function main() {
         } catch (error) {
             console.log(`    ⚠️ 竞拍者2购买失败: ${error.message}`);
         }
+
+        // 5.5 检查用户清算信息是否被重置
+        console.log("  5.5 被清算者TokenID的冻结状态");
+        const afterLiquidation = await liquidationManagerContract.userLiquidationStatus(liquidatedUser.address, tokenId);
+        console.log(`      清算后Token${tokenId}冻结状态: ${afterLiquidation.isFreezed ?  "✅" : "❌"}`);
+        console.log(`      风险等级: ${afterLiquidation.riskLevel}`);
+        if (!afterLiquidation.isFreezed){
+          console.log("      清算全部完成 ✅");
+          const currentDificit = await custodianContract.deficit();
+          const custodianLoss = (currentDificit - originalDeficit) >0n ? ethers.formatEther((currentDificit - originalDeficit)) : 0;
+          const custodianProfit = (originalDeficit - currentDificit) >0n ? ethers.formatEther((originalDeficit - currentDificit)) : 0;
+            console.log(`      该次拍卖custodian补贴: ${custodianLoss}LTC`);
+            console.log(`      该次拍卖custodian盈余: ${custodianProfit}LTC`);
+
+        }
+        else{
+          console.log("      拍卖目标未达成 ❌");
+        }
+
   }
 
 // 记录当前custodian的underlying balance
