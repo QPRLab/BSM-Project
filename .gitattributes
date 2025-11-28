@@ -1,0 +1,34 @@
+# Auto-normalize text files
+* text=auto
+
+# Force LF for common source and documentation files
+*.md text eol=lf
+*.markdown text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.sol text eol=lf
+
+# Treat assets/binaries as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.pptx binary
+
+# Keep lockfiles as text with LF
+package-lock.json text eol=lf
+pnpm-lock.yaml text eol=lf
+
+# Prevent export of build artifacts
+/artifacts/** -text
+/cache/** -text
