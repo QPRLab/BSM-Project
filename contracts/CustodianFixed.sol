@@ -827,10 +827,12 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
     LiquidationManager public liquidationManager;
     AuctionManager public auctionManager;
     //Accounting variables
-    uint256 public accumulatedRewardInStable = 0;
-    uint256 public accumulatedPenaltyInStable = 0;
+    uint256 public accumulatedRewardInUnderlying = 0;
+    uint256 public accumulatedPenaltyInUnderlying = 0;
     uint256 public accumulatedUnderlyingSoldInAuction = 0;
-    uint256 public accumulatedReceivedInAuction  = 0;
+    int256 public deficit = 0; //清算赤字，单位[underlying]： 如果为正，系统亏损；如果为负，系统盈余 
+
+
     // ====================== 权限管理 =======================
     bytes32 public constant LIQUIDATION_ROLE = keccak256("LIQUIDATION_ROLE");
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -891,21 +893,24 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
     event InterestPaidInAdjustment(uint256 interest);
     event ResetAccounting();
     event BurnLeverageTokenInLiquidation(address indexed user, uint256 tokenId, uint256 balance);
-    event WithdrawAfterLiquidation(address indexed user, uint256 amountToUser, uint256 penalty);
     event BurnStableTokenInLiquidation(address indexed user,uint256 tokenID, uint256 stableAmount );
 
     // ================= Accounting =====================
-    function getAccumulatedRewardInStable() external onlyRole(ADMIN_ROLE) view returns (uint256) {
-        return accumulatedRewardInStable;
+    function getAccumulatedRewardInUnderlying() external onlyRole(ADMIN_ROLE) view returns (uint256) {
+        return accumulatedRewardInUnderlying;
     }
-    function getAccumulatedPenaltyInStable() external onlyRole(ADMIN_ROLE) view returns (uint256) {
-        return accumulatedPenaltyInStable;
+    function getAccumulatedPenaltyInUnderlying() external onlyRole(ADMIN_ROLE) view returns (uint256) {
+        return accumulatedPenaltyInUnderlying;
+    }
+
+    function getDeficit() external onlyRole(ADMIN_ROLE) view returns (int256) {
+        return deficit;
     }
     function resetAccounting() external onlyRole(ADMIN_ROLE) {
-        accumulatedRewardInStable = 0;
-        accumulatedPenaltyInStable = 0;
+        accumulatedRewardInUnderlying = 0;
+        accumulatedPenaltyInUnderlying = 0;
         accumulatedUnderlyingSoldInAuction = 0;
-        accumulatedReceivedInAuction = 0;
+        deficit = 0;
         emit ResetAccounting();
     }
     
@@ -925,7 +930,7 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
      * @param tokenId tokenID
      * @param balance 销毁数量
      */
-    function burnToken (address user, uint256 tokenId, uint256 balance, uint256 underlyingAmountInWei ) external onlyRole(LIQUIDATION_ROLE) {
+    function burnToken (address user, uint256 tokenId, uint256 balance ) external onlyRole(LIQUIDATION_ROLE) {
 
         leverageToken.burn(user, tokenId, balance);
         totalSupplyL -= balance;
@@ -939,7 +944,6 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
         // 计算利息对应的底层资产数量
         if(isValid && currentPriceInWei > 0) {
             uint256 deductUnderlyingAmountInWei = totalInterestInWei * PRICE_PRECISION / currentPriceInWei;
-            require(deductUnderlyingAmountInWei <= underlyingAmountInWei, "The underlying to be in auction should be more than accured interest.");
             
             // 根据底层资产精度调整
             if (underlyingTokenDecimals == 18) {
@@ -967,33 +971,25 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
     
 
 
-        /**
-     * @dev 用户提取清算后拍卖后得到的稳定币
-     * @param user 用户地址
-     * @param tokenID 被清算的tokenID
-     * @param amountToUser 最后返还给用户的稳定币
-     * @param penalty 惩罚金
-     * @param stableAmountToBeBurned 将被销毁的稳定币
-     */
-    function withdrawAfterLiquidation (address user, uint256 tokenID, uint256 amountToUser,  uint256 penalty,  uint256 stableAmountToBeBurned ) external onlyRole(LIQUIDATION_ROLE) {
-        require(stableToken.balanceOf(address(this)) >= (stableAmountToBeBurned+amountToUser), 'withdrawAfterLiquidation failed.' );
-        stableToken.burn(address(this), stableAmountToBeBurned);
-        totalSupplyS -= stableAmountToBeBurned;
-        require(stableToken.transfer(user, amountToUser), 'withdrawAfterLiquidation failed' );
-        accumulatedPenaltyInStable += penalty;
-        emit BurnStableTokenInLiquidation(user, tokenID, stableAmountToBeBurned);
-        emit WithdrawAfterLiquidation(user, amountToUser, penalty); 
+
+
+    function backToUser (address user, uint256 amountToUser) external onlyRole(AUCTION_ROLE) {
+        require(underlyingToken.transfer(user, amountToUser), 'Bark failed: Failed transfer the rest to liquidated user' );
     } 
+
+
+    function updateDeficit( uint256 soldUnderlyingAmount, int256 underlyingAmount)external onlyRole(LIQUIDATION_ROLE){
+        deficit = deficit + int256(soldUnderlyingAmount) -  underlyingAmount;
+    }
 
 
 
     //================== 拍卖 ====================
     function receiveFromKpr(address kpr,  uint256 stableAmount) external onlyRole(AUCTION_ROLE) {
-        // require(stableToken.balanceOf(kpr) >= stableAmount, 'receiveFromKpr failed' );
         checkBalance(stableToken.balanceOf(kpr), stableAmount);
         checkAllowance(stableToken.allowance(kpr, address(this)), stableAmount);
         require(stableToken.transferFrom( kpr, address(this), stableAmount), 'receiveFromKpr failed' );
-        accumulatedReceivedInAuction += stableAmount;
+        stableToken.burn(address(this), stableAmount); //直接销毁
         emit ReceiveStableInAuction(kpr, stableAmount);
     }
 
@@ -1006,9 +1002,9 @@ contract CustodianFixed is Ownable, ReentrancyGuard, AccessControl {
     }
 
     function rewardKpr(address kpr, uint256 rewardAmount) external onlyRole(AUCTION_ROLE) {
-        checkBalance(stableToken.balanceOf(address(this)), rewardAmount);
-        require(stableToken.transfer(kpr, rewardAmount), 'transferToKpr failed' );
-        accumulatedRewardInStable += rewardAmount;
+        checkBalance(underlyingToken.balanceOf(address(this)), rewardAmount);
+        require(underlyingToken.transfer(kpr, rewardAmount), 'rewardKpr failed' );
+        accumulatedRewardInUnderlying += rewardAmount;
         emit RewardKpr(kpr, rewardAmount);
     }
 

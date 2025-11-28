@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../tokens/StableToken.sol";
 import "./LiquidationManager.sol";
-import "../interfaces/IAbacus.sol";
+import "./abaci.sol";
 
 // 方便无本金拍卖
 interface ClipperCallee {
@@ -43,7 +43,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     CustodianFixed public immutable custodian;        // 核心引擎
     
     LiquidationManager  public liquidationManager;  // 清算管理模块
-    IAbacus  public priceCalculator;     // 当前价格计算器 (from Abacus)
+    LinearDecrease  public priceCalculator;     // 当前价格计算器 (from Abacus)
 
     // 拍卖参数结构体 - 优化存储布局
     struct AuctionParams {
@@ -52,7 +52,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         uint256 priceDropThreshold;  // 拍卖重置前的价格下降百分比
         uint256 percentageReward;    // 激励keeper的百分比费用 
         uint256 fixedReward;         // 激励keeper的固定费用 
-        uint256 minAuctionAmount;    // 最小拍卖金额 
+        uint256 minAuctionAmount;    // 最小购买数量 
     }
     AuctionParams public auctionParams;
 
@@ -68,13 +68,14 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     uint256 public accumulatedRewardInStable = 0;
 
     struct Auction {
-        uint256 arrayIndex;  // 在活跃数组中的索引
-        uint256 underlyingAmount;  // 剩余抵押品数量 [wad]
+        uint256 valueToBeBurned;  // 剩余抵押品数量 [1e18]
+        int256 underlyingAmount; // 扣除reward后剩余的底层资产数量 [1e18] 有正负
+        uint256 soldUnderlyingAmount; //卖掉的underlying数量[1e18]
         address originalOwner;     // 被清算的杠杆币所有者
         uint256 tokenId;           // tokenID
         uint96  startTime;         // 拍卖开始时间
-        uint256 startingPrice;     // 起始价格 
-        uint256 currentPrice;      // 当前价格
+        uint256 startingPrice;     // 起始价格 [1e18]
+        uint256 currentPrice;      // 当前价格 [1e18]
         uint256 totalPayment;      // 累计支付金额  - 拍卖重置时不重置该值
     }
     mapping(uint256 => Auction) public auctions;
@@ -102,30 +103,29 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
 
     event AuctionStarted(
         uint256 indexed auctionId,
+        uint256 valueToBeBurned,
         uint256 startingPrice,
-        uint256 underlyinglAmount,
         address originalOwner,
         uint256 indexed tokenId,
         address indexed triggerer,
-        uint256 rewardAmount
+        uint256 rewardValue
     );
     event PurchaseMade(
         uint256 indexed auctionId,
-        uint256 maxAcceptablePrice,
         uint256 currentPrice,
-        uint256 paymentAmount,
-        uint256 remainingunderlying,
+        uint256 purchaseSlice,
+        uint256 remainingValueToBeBurned,
         address indexed kpr,
         address indexed originalOwner
     );
     event AuctionReset(
         uint256 indexed auctionId,
+        uint256 valueToBeBurned,
         uint256 newStartingPrice,
-        uint256 underlyingAmount,
         address originalOwner,
         uint256 indexed tokenId,
         address indexed triggerer,
-        uint256 rewardAmount
+        uint256 rewardValue
     );
 
     event AuctionRemoved(uint256 auctionId);
@@ -172,7 +172,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
 
         liquidationManager = LiquidationManager(liquidationManager_);
         grantCallerRole(liquidationManager_);
-        priceCalculator = IAbacus(priceCalculator_);
+        priceCalculator = LinearDecrease(priceCalculator_);
 
         auctionParams.priceMultiplier = priceMultiplier_;
         auctionParams.resetTime = resetTime_;
@@ -186,8 +186,8 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         // require(hasRole(ADMIN_ROLE, msg.sender), "Auction/not-admin");
 
         if      (parameter == "priceMultiplier") auctionParams.priceMultiplier = value;
-        else if (parameter == "resetTime")       auctionParams.resetTime = value;           // 拍卖重置前的时间
-        else if (parameter == "minAuctionAmount") auctionParams.minAuctionAmount = value;           // 拍卖重置前的时间
+        else if (parameter == "resetTime")      {auctionParams.resetTime = value;  priceCalculator.file(value) ;}  // 拍卖重置前的时间
+        else if (parameter == "minAuctionAmount") auctionParams.minAuctionAmount = value;           // 最小购买金额
         else if (parameter == "priceDropThreshold") auctionParams.priceDropThreshold = value; // 拍卖重置前的价格下降百分比
         else if (parameter == "percentageReward") auctionParams.percentageReward = value;   // 激励百分比
         else if (parameter == "fixedReward")     auctionParams.fixedReward = value;  // 固定激励费用
@@ -199,7 +199,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     function setAddress(bytes32 parameter, address addr) external onlyRole(ADMIN_ROLE) nonReentrant {
         // require(hasRole(ADMIN_ROLE, msg.sender), "Auction/not-admin");
         if (parameter == "liquidationManager") { liquidationManager = LiquidationManager(addr); grantCallerRole(addr);}
-        else if (parameter == "priceCalculator") priceCalculator = IAbacus(addr);
+        else if (parameter == "priceCalculator") priceCalculator = LinearDecrease(addr);
         else revert("Unrecognized parameter");
         emit AddressChanged(parameter, addr);
     }
@@ -237,58 +237,61 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
 
     // 开始拍卖
     function startAuction(
-        uint256 underlyingAmount, // 底层资产数量 
+        uint256 valueToBeBurned,  // 需被销毁的稳定币价值
+        uint256 penalty,          // 惩罚金
         address originalOwner,    // 被清算用户地址
         uint256 tokenId,          // tokenID
+        uint256 underlyingValueToUser, //返还给用户的残值
         address triggerer         // 将接收激励的地址
     ) external onlyRole(CALLER_ROLE) nonReentrant checkCircuitBreaker(1) returns (uint256 auctionId) {
         // 输入验证
-        // require(debtTarget > 0, "Debt Target should be larger than 0!");
-        require(underlyingAmount > 0, "Underlying Amount should be larger than 0!");
-        require(originalOwner != address(0), "Invalid Original Owner!");
         auctionId = ++totalAuctions;
-        require(auctionId > 0, "Auction ID should be larger than 0!");
-
 
 
         // 循环优化 - 更新映射和计数器
         isActiveAuction[auctionId] = true;
         activeAuctionCount++;
 
-        // auctions[auctionId].debtTarget = debtTarget;
-        auctions[auctionId].underlyingAmount = underlyingAmount;
-        auctions[auctionId].originalOwner = originalOwner;
-        auctions[auctionId].tokenId = tokenId;
-        auctions[auctionId].startTime = uint96(block.timestamp);
 
-
+        // 从预言机获取最新底层资产价格并计算拍卖起始价格
         uint256 startingPrice;
-        // startingPrice = rmul(getCurrentPrice(), priceMultiplier);
-        // require(startingPrice > 0, "Starting Price should be larger than 0!");
-        // auctions[auctionId].startingPrice = startingPrice;
-
         (uint256 currentPrice, , bool isValid) = custodian.getLatestPriceView();
-        require(currentPrice>0 && isValid, 'Invalid oracle price (<=0)!');
-
+        require(currentPrice>0 && isValid, 'Invalid oracle price!');
         startingPrice = wmul(currentPrice, auctionParams.priceMultiplier);
-        require(startingPrice > 0, "Starting Price should be larger than 0!");
-        auctions[auctionId].startingPrice = startingPrice;
 
-        // 激励触发拍卖
+        // 计算应付给Keeper的reward
         uint256 currentFixedReward = auctionParams.fixedReward;
         uint256 currentPercentageReward = auctionParams.percentageReward;
-        uint256 rewardAmount;
+        uint256 rewardValue;
+
         if (currentFixedReward > 0 || currentPercentageReward > 0) {
             uint256 currentMinAuctionAmount = auctionParams.minAuctionAmount;
-            // 当拍卖价值大于等于最小拍卖金额时，才激励
-            if ( wmul(underlyingAmount, currentPrice) >= currentMinAuctionAmount) {
-                rewardAmount = add(currentFixedReward, wmul( wmul(underlyingAmount, currentPrice), currentPercentageReward));
-                custodian.rewardKpr(triggerer, rewardAmount);
-                accumulatedRewardInStable += rewardAmount;
+            // 当拍卖数量大于等于最小拍卖数量时，支付固定奖励和比例奖励，否则只支付固定奖励
+            if ( wdiv(valueToBeBurned, currentPrice) >= currentMinAuctionAmount) {
+                rewardValue = add(currentFixedReward, wmul( valueToBeBurned- wmul(currentMinAuctionAmount, currentPrice ), currentPercentageReward));
+
+            } else{
+                rewardValue = currentFixedReward;
             }
         }
 
-        emit AuctionStarted(auctionId, startingPrice,  underlyingAmount, originalOwner, tokenId, triggerer, rewardAmount);
+        // 记录拍卖信息
+        auctions[auctionId].startingPrice = startingPrice;
+        auctions[auctionId].valueToBeBurned = valueToBeBurned;
+        auctions[auctionId].underlyingAmount =int256(wdiv( valueToBeBurned + penalty , currentPrice)) 
+                                                - int256(wdiv( rewardValue, currentPrice))  ;
+        auctions[auctionId].soldUnderlyingAmount = 0;
+        auctions[auctionId].originalOwner = originalOwner;
+        auctions[auctionId].tokenId = tokenId;
+        auctions[auctionId].startTime = uint96(block.timestamp);
+        
+        // 返还给被清算用户残值
+        custodian.backToUser(originalOwner,  wdiv(underlyingValueToUser, currentPrice));
+
+        // 支付reward        
+        custodian.rewardKpr(triggerer, wdiv(rewardValue, currentPrice));
+
+        emit AuctionStarted(auctionId, valueToBeBurned, startingPrice,  originalOwner, tokenId, triggerer, rewardValue);
     }
 
 
@@ -309,31 +312,38 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         (bool needsReset,) = checkAuctionStatus(startTime, startingPrice);
         require(needsReset, "Auction is not ready to be reset!");
 
-        // uint256 debtTarget = auctions[auctionId].debtTarget;
-        uint256 underlyingAmount = auctions[auctionId].underlyingAmount;
+        uint256 valueToBeBurned = auctions[auctionId].valueToBeBurned;
         auctions[auctionId].startTime = uint96(block.timestamp);
 
+        // 计算新的起始价格
         (uint256 currentPrice, , bool isValid) = custodian.getLatestPriceView();
-        require(currentPrice>0 && isValid, 'Invalid oracle price (<=0)!');
-
+        require(currentPrice>0 && isValid, 'Invalid oracle price!');
         startingPrice = wmul(currentPrice, auctionParams.priceMultiplier);
-        require(startingPrice > 0, "Starting Price should be larger than 0!");
         auctions[auctionId].startingPrice = startingPrice;
 
-        // 激励重置拍卖
+        // 计算应付给Keeper的reward
         uint256 currentFixedReward = auctionParams.fixedReward;
         uint256 currentPercentageReward = auctionParams.percentageReward;
-        uint256 rewardAmount;
+        uint256 rewardValue;
+
         if (currentFixedReward > 0 || currentPercentageReward > 0) {
             uint256 currentMinAuctionAmount = auctionParams.minAuctionAmount;
-            if ( wmul(underlyingAmount, currentPrice) >= currentMinAuctionAmount) {
-                rewardAmount = add(currentFixedReward, wmul( wmul(underlyingAmount, currentPrice), currentPercentageReward));
-                custodian.rewardKpr(triggerer, rewardAmount);
-                accumulatedRewardInStable += rewardAmount;
+            // 当拍卖数量大于等于最小拍卖数量时，支付固定奖励和比例奖励，否则只支付固定奖励
+            if ( wdiv(valueToBeBurned, currentPrice) >= currentMinAuctionAmount) {
+                rewardValue = add(currentFixedReward, wmul( valueToBeBurned- wmul(currentMinAuctionAmount, currentPrice ), currentPercentageReward));
+
+            } else{
+                rewardValue = currentFixedReward;
             }
         }
 
-        emit AuctionReset(auctionId, startingPrice, underlyingAmount, originalOwner, auctions[auctionId].tokenId , triggerer, rewardAmount);
+        // 更新underlying数量
+        auctions[auctionId].underlyingAmount= auctions[auctionId].underlyingAmount - int256(wdiv( rewardValue, currentPrice));
+        
+        // 激励触发拍卖        
+        custodian.rewardKpr(triggerer, wdiv(rewardValue, currentPrice));
+
+        emit AuctionReset(auctionId, valueToBeBurned, startingPrice, originalOwner, auctions[auctionId].tokenId , triggerer, rewardValue);
     }
 
 
@@ -366,47 +376,57 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
             bool needsReset;
             (needsReset, currentPrice) = checkAuctionStatus(startTime, auctions[auctionId].startingPrice);
 
-            // 检查拍卖不需要重置
+            // 检查拍卖是否需要重置
             require(!needsReset, "Auction needs to be reset");
         }
 
         // 确保价格对买家可接受
         require(maxAcceptablePrice >= currentPrice, "Current price is above acceptable price");
 
-        uint256 underlyingAmount = auctions[auctionId].underlyingAmount;
+        // 确保买家最大购买量不小于系统最小购买量
+        uint256 currentMinAuctionAmount = auctionParams.minAuctionAmount; //最小购买限制
+        require(maxPurchaseAmount>=currentMinAuctionAmount, 'Puchase amount should be no less than the minimum purchase limit');
+
+        uint256 valueToBeBurned = auctions[auctionId].valueToBeBurned;
         uint256 paymentAmount;
-        uint256 underlyingValue; //underlying 总价值
+
 
         
         // 购买尽可能多的抵押品，最多到maxPurchaseAmount
-        uint256 purchaseSlice = min(underlyingAmount, maxPurchaseAmount);
+        uint256 purchaseSlice = maxPurchaseAmount;
 
         // 购买这部分underlying需要的S金额
         paymentAmount = wmul(purchaseSlice, currentPrice);
-        underlyingValue = wmul(underlyingAmount, currentPrice);
 
-
-        // 如果购买全部underlying => 拍卖完成 => 不考虑尘问题, 否则：
-        if ( purchaseSlice < underlyingAmount) {
-            uint256 currentMinAuctionAmount = auctionParams.minAuctionAmount;
-            if (underlyingValue < currentMinAuctionAmount){
-                require(purchaseSlice >= underlyingAmount, 'Current underlying amount is too small, please increase your maximum purchase amount and buy all underlying.'  );
-            }
-            if (sub(underlyingValue,paymentAmount) < currentMinAuctionAmount) {
-                // 如果拍卖后剩余underlying的价值小于最小拍卖金额，则需要调整支付金额和购买数量:
-                // 调整支付金额
-                paymentAmount = sub(underlyingValue, currentMinAuctionAmount);
-                // 调整购买数量
-                purchaseSlice = wdiv(paymentAmount,  currentPrice);
-            }
+        // 如果支付的S超过销毁量，将其设为销毁量, 并计算相应底层资产数量; 
+        // 如果支付的S不足以抵消销毁量，那么计算underlying尘数量是否小于系统最小购买限制
+        if (paymentAmount>valueToBeBurned){
+            paymentAmount = valueToBeBurned;
+            purchaseSlice = wdiv(paymentAmount, currentPrice);
+        } else {
+            uint256 residualAmount = wdiv(sub(valueToBeBurned, paymentAmount), currentPrice);
+            require(residualAmount > currentMinAuctionAmount, 'Residual value are too small, please increase the maximum purchase amount' );
         }
 
-        // 计算操作后的剩余underlying数量
-        underlyingAmount = sub(underlyingAmount,purchaseSlice);
-        
+        // 更新剩余销毁数量
+        auctions[auctionId].valueToBeBurned = sub(valueToBeBurned, paymentAmount);
+
+        // 更新卖掉的underlying数量
+        auctions[auctionId].soldUnderlyingAmount+=purchaseSlice;
+
+
+
+        emit PurchaseMade(auctionId, currentPrice, purchaseSlice, auctions[auctionId].valueToBeBurned , receiver, originalOwner);
+
+        if (auctions[auctionId].valueToBeBurned==0){
+            // 更新清算状态
+            liquidationManager._afterAuction(originalOwner, auctions[auctionId].tokenId,
+             auctions[auctionId].soldUnderlyingAmount, auctions[auctionId].underlyingAmount);
+            removeAuction(auctionId);
+        }
+
         // 发送underlying给接收者
         custodian.transferToKpr(receiver, purchaseSlice);
-        accumulatedUnderlyingSoldInAuction += purchaseSlice;
 
         // 执行外部调用（如果定义了调用数据）
         LiquidationManager liquidationManager_ = liquidationManager;
@@ -416,23 +436,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         
         // 从调用者获取S
         custodian.receiveFromKpr(msg.sender,  paymentAmount);
-        accumulatedReceivedInAuction += paymentAmount;
-
-        // 更新累计支付金额
-        auctions[auctionId].totalPayment = add(auctions[auctionId].totalPayment, paymentAmount);
-
-        // 更新清算信息
-        liquidationManager._afterEachBid(originalOwner, auctions[auctionId].tokenId, auctions[auctionId].totalPayment, underlyingAmount );
     
-
-        if (underlyingAmount == 0) {
-            removeAuction(auctionId);
-        }
-        else {
-            auctions[auctionId].underlyingAmount = underlyingAmount;
-        }
-
-        emit PurchaseMade(auctionId, maxAcceptablePrice, currentPrice, paymentAmount, underlyingAmount, receiver, originalOwner);
     }
 
     function removeAuction(uint256 auctionId) internal {
@@ -448,13 +452,13 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         return activeAuctionCount;
     }
 
-    // 返回所有活跃拍卖ID数组
+    // 返回拍卖ID是否活跃
     function auctionIsActive(uint256 auctionId) external view returns (bool) {
         return isActiveAuction[auctionId];
     }
 
     // 外部查询拍卖状态
-    function getAuctionStatus(uint256 auctionId) external view returns (bool needsReset, uint256 currentPrice, uint256 underlyingAmount) {
+    function getAuctionStatus(uint256 auctionId) external view returns (bool needsReset, uint256 currentPrice, uint256 valueToBeBurned) {
         require(isActiveAuction[auctionId],'The acuction is not active');
         // 读取拍卖数据
         address originalOwner = auctions[auctionId].originalOwner;
@@ -464,8 +468,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
         (done, currentPrice) = checkAuctionStatus(startTime, auctions[auctionId].startingPrice);
 
         needsReset = originalOwner != address(0) && done;
-        underlyingAmount = auctions[auctionId].underlyingAmount;
-        // debtTarget = auctions[auctionId].debtTarget;
+        valueToBeBurned = auctions[auctionId].valueToBeBurned;
     }
 
     // 内部检查拍卖状态
