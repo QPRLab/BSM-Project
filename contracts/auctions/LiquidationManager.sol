@@ -61,6 +61,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
     // ================= 用户清算状态 =================
     struct UserLiquidationStatus {
         uint256 balance;               // 余额
+        uint256 auctionId;
         LeverageType leverageType;     // 杠杆比例
         uint8 riskLevel;               // 风险等级
         bool isFreezed;                // 是否被冻结 币在清算时被冻结，拍卖完成时解冻。冻结期间无法铸币和销毁
@@ -254,6 +255,11 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         // 创建荷兰式拍卖
         auctionId = auction.startAuction(valueToBeBurned, globalConfig.penalty, user, tokenId, underlyingValueToUser, kpr);
 
+        // 记录auctionID
+        userLiquidationStatus[user][tokenId].auctionId =auctionId ;
+
+
+
         return auctionId;
     }
 
@@ -293,6 +299,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
     function _afterAuction(address usr, uint256 tokenID, uint256 soldUnderlyingAmount, int256 underlyingAmount) external onlyRole(AUCTION_ROLE) {
         userLiquidationStatus[usr][tokenID].isFreezed = false; //解冻
         userLiquidationStatus[usr][tokenID].riskLevel = 0; //重置riskLevel
+        userLiquidationStatus[usr][tokenID].auctionId = 0; //重置auctionId
         custodian.updateDeficit(soldUnderlyingAmount, underlyingAmount);
     }
 
