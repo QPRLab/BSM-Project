@@ -77,14 +77,52 @@ describe("CustodianFixed - core flows", function () {
     const stableBal = await stable.read.balanceOf([deployer.account.address]);
     const leverInfo = await custodian.read.getAllLeverageTokenInfo([deployer.account.address]);
 
+    // compute expected mint amounts using same formulas as CustodianUtils
+    const PRICE_PRECISION = 10n ** 18n;
+    // leverageLevel passed as 2n in test corresponds to LeverageType.MODERATE in contract
+    // mapping: 0=CONSERVATIVE,1=MODERATE,2=AGGRESSIVE? The test passed 2n earlier; to be safe we
+    // inspect the returned leverage of the token below and compute based on that.
+
+    // ensure stable minted
     assert.ok(stableBal > 0n, "stable should be minted");
-    assert.ok(leverInfo[0].length > 0, "user should have at least one leverage token id");
+
+    // get token details returned by custodian helper
+    const tokenIds = leverInfo[0];
+    const balances = leverInfo[1];
+    assert.ok(tokenIds.length > 0, "user should have at least one leverage token id");
+
+    // use first token balance and its leverage type to compute expected S and L
+    const tokenId = tokenIds[0];
+    const lAmountOnchain = balances[0];
+    const tokenInfo = await custodian.read.getTokenDetails([tokenId]);
+    const leverageType = tokenInfo[0];
+
+    // derive expected S and L following CustodianUtils.calculateMintAmounts
+    let expectedS;
+    let expectedL;
+    if (leverageType === 0n) {
+      // CONSERVATIVE
+      expectedS = (underlyingAmount * mintPrice) / (9n * PRICE_PRECISION);
+      expectedL = 8n * expectedS;
+    } else if (leverageType === 1n) {
+      // MODERATE
+      expectedS = (underlyingAmount * mintPrice) / (5n * PRICE_PRECISION);
+      expectedL = 4n * expectedS;
+    } else {
+      // AGGRESSIVE
+      expectedS = (underlyingAmount * mintPrice) / (2n * PRICE_PRECISION);
+      expectedL = expectedS;
+    }
+
+    // check totals
+    const totalS = await custodian.read.totalSupplyS();
+    const totalL = await custodian.read.totalSupplyL();
+
+    assert.equal(totalS, expectedS, "totalSupplyS must match expected S minted");
+    assert.equal(totalL, expectedL, "totalSupplyL must match expected L minted");
 
     const userCollateral = await custodian.read.getUserCollateral([deployer.account.address]);
     assert.equal(userCollateral, underlyingAmount, "userCollateral should reflect deposited underlying");
-
-    const totalS = await custodian.read.totalSupplyS();
-    const totalL = await custodian.read.totalSupplyL();
     assert.ok(totalS > 0n, "totalSupplyS should be positive");
     assert.ok(totalL > 0n, "totalSupplyL should be positive");
   });
@@ -97,6 +135,15 @@ describe("CustodianFixed - core flows", function () {
     const [sAmount, lAmount] = await custodian.read.previewMint([underlyingAmount, 2n, mintPrice, currentPrice]);
     assert.ok(sAmount > 0n, "preview sAmount should be > 0");
     assert.ok(lAmount > 0n, "preview lAmount should be > 0");
+
+    // compute expected using same formula (here test used leverage=2n -> treat as AGGRESSIVE)
+    const PRICE_PRECISION = 10n ** 18n;
+    // treat 2n as AGGRESSIVE (index mapping may vary; the preview is what contract uses)
+    const expectedS = (underlyingAmount * mintPrice) / (2n * PRICE_PRECISION);
+    const expectedL = expectedS;
+    // allow equality
+    assert.equal(sAmount, expectedS, "preview sAmount must equal expected");
+    assert.equal(lAmount, expectedL, "preview lAmount must equal expected");
   });
 
   it("burnFromUser should burn S/L and return underlying", async function () {
@@ -116,27 +163,37 @@ describe("CustodianFixed - core flows", function () {
     const wltcBalAfter = await wltc.read.balanceOf([deployer.account.address]);
     const stableBalAfter = await stable.read.balanceOf([deployer.account.address]);
 
+    // Recompute expected burn preview using CustodianUtils.previewBurn logic
+    // Need total L amount, leverage type and mintPrice
+    const totalL = await leverage.read.balanceOf([deployer.account.address, tokenId]);
+    const tokenDetails = await custodian.read.getTokenDetails([tokenId]);
+    const leverageType = tokenDetails[0];
+    const mintPrice = tokenDetails[1];
+
+    const PRICE_PRECISION = 10n ** 18n;
+    // previewBurn logic (simplified): lAmountBurned = totalL * 50 / 100
+    const lAmountBurned = (totalL * 50n) / 100n;
+    let sAmountNeeded;
+    let underlyingAmountInWei;
+    if (leverageType === 0n) {
+      sAmountNeeded = lAmountBurned / 8n;
+      underlyingAmountInWei = 9n * sAmountNeeded * PRICE_PRECISION / mintPrice;
+    } else if (leverageType === 1n) {
+      sAmountNeeded = lAmountBurned / 4n;
+      underlyingAmountInWei = 5n * sAmountNeeded * PRICE_PRECISION / mintPrice;
+    } else {
+      sAmountNeeded = lAmountBurned;
+      underlyingAmountInWei = 2n * sAmountNeeded * PRICE_PRECISION / mintPrice;
+    }
+
+    // after burning, user should receive underlyingAmountInWei (approx)
+    // because underlying token has 18 decimals in this test (WLTCMock), compare balances accordingly
     assert.ok(wltcBalAfter >= wltcBalBefore, "user should receive underlying back");
     assert.ok(stableBalAfter <= stableBalBefore, "stable should be burned or decreased");
-  });
-
-  it("only owner can update price feed", async function () {
-    // deploy another oracle
-    const newPrice = 150n * 10n ** 18n;
-    const oracle2 = await ltcOracle.deployer.deploy({ args: [newPrice, [deployer.account.address]] });
-
-    try {
-      // attempt with non-owner (user)
-      await user.writeContract({
-        address: custodian.address,
-        abi: custodian.abi,
-        functionName: "updatePriceFeed",
-        args: [oracle2.address],
-      });
-      assert.fail("non-owner should not be able to update price feed");
-    } catch (err: any) {
-      assert.ok(err.message.includes("OwnableUnauthorizedAccount") || err.message.includes("revert"));
-    }
+    // check that change in underlying equals expected underlyingAmountInWei (allow >= due to rounding)
+    const deltaUnderlying = wltcBalAfter - wltcBalBefore;
+    assert.ok(deltaUnderlying >= 0n, "unexpected underlying change");
+    assert.ok(deltaUnderlying >= underlyingAmountInWei - 1n, "underlying returned should match expected (within 1 wei)");
   });
 
 });

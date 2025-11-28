@@ -428,16 +428,18 @@
       const type = BigInt(leverageType.value)
       
       let stableRequired: bigint
+      let wltcExact: bigint
       if (type === 0n) { // Conservative
         stableRequired = LAmountDesired / 8n
+        wltcExact = (9n * stableRequired * 10n ** 18n) / priceInWei;//mintPrice is in 1e18
       } else if (type === 1n) { // Moderate
         stableRequired = LAmountDesired / 4n
+        wltcExact = (5n * stableRequired * 10n ** 18n) / priceInWei;//mintPrice is in 1e18
       } else { // Aggressive
         stableRequired = LAmountDesired
+        wltcExact = (2n * stableRequired * 10n ** 18n) / priceInWei;//mintPrice is in 1e18
       }
-      
       // 计算需要的 WLTC (向上取整到5位小数)
-      const wltcExact = (2n * stableRequired * 10n ** 18n) / priceInWei
       const wltcNeeded = ((wltcExact + 10n ** 13n - 1n) / (10n ** 13n)) * (10n ** 13n)
       
       console.log('📊 资产计算:')

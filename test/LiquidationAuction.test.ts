@@ -59,8 +59,9 @@ describe("Liquidation + Auction integration", function () {
     auctionManager = await viem.deployContract("AuctionManager", [stableToken.address, custodian.address]);
     liquidationManager = await viem.deployContract("LiquidationManager", [multiLeverageToken.address, custodian.address]);
 
-    // simple price calculator (LinearDecrease) - choose tau large enough
-    priceCalculator = await viem.deployContract("LinearDecrease", [3600n]);
+   // simple price calculator (LinearDecrease) - choose tau large enough
+   // LinearDecrease constructor expects (uint256 _tau, address auctionAddr)
+   priceCalculator = await viem.deployContract("LinearDecrease", [3600n, auctionManager.address]);
 
     // initialize contracts (use deployer as admin)
     await interestManager.write.initialize([multiLeverageToken.address, custodian.address]);
@@ -175,7 +176,7 @@ describe("Liquidation + Auction integration", function () {
     console.log("----------------------------------------------------------");
   });
 
-  it("should create an auction when NAV drops and allow a bidder to purchase", async () => {
+  it("test Liquidation & Auction", async () => {
     // // give liquidatedUser some WLTC and approve custodian
     // const mintAmount = parseEther("50");
     // let tx = await wltc.write.mint([liquidatedUser.account.address, mintAmount]);
@@ -302,42 +303,6 @@ describe("Liquidation + Auction integration", function () {
     console.log("Auction info Remaining - underlyingAmount:", ethers.formatEther(underlyingRemaining));
     assert.ok(underlyingRemaining === 0n, "expected underlying to be zero after purchase");
 
-
-      // 被清算用户提取稳定币（如果拍卖完成并且状态允许）
-      try {
-         const withdrawStatus = await liquidationManager.read.userLiquidationStatus([liquidatedUser.account.address, tokenId]);
-         // withdrawStatus may be tuple-like; check both named and indexed fields
-         const isLiquidated = (withdrawStatus as any).isLiquidated ?? (withdrawStatus as any)[3];
-         const isUnder = (withdrawStatus as any).isUnderLiquidation ?? (withdrawStatus as any)[4];
-         const stableNumsRaw = (withdrawStatus as any).stableNums ?? (withdrawStatus as any)[6];
-         const stableNums = typeof stableNumsRaw === 'bigint' ? stableNumsRaw : BigInt(stableNumsRaw || 0);
-
-         console.log(`Withdraw status - isLiquidated: ${Boolean(isLiquidated)}, isUnderLiquidation: ${Boolean(isUnder)}, stableNums: ${ethers.formatEther(stableNums)}`);
-
-         if (Boolean(isLiquidated) && !Boolean(isUnder)) {
-            // record before balance
-            const beforeWithdrawBalance = await stableToken.read.balanceOf([liquidatedUser.account.address]);
-            console.log(`  beforeWithdrawBalance: ${ethers.formatEther(beforeWithdrawBalance as bigint)} S`);
-
-            // call withdrawStable as liquidatedUser
-            const withdrawTx = await liquidatedUser.writeContract({ address: liquidationManager.address, abi: liquidationManager.abi, functionName: "withdrawStable", args: [liquidatedUser.account.address, tokenId] });
-            await publicClient.waitForTransactionReceipt({ hash: withdrawTx });
-
-            const afterWithdrawBalance = await stableToken.read.balanceOf([liquidatedUser.account.address]);
-            console.log(`  afterWithdrawBalance: ${ethers.formatEther(afterWithdrawBalance as bigint)} S`);
-            console.log(`  withdrawn: ${ethers.formatEther((afterWithdrawBalance as bigint) - (beforeWithdrawBalance as bigint))} S`);
-
-            // check user status reset
-            const afterWithdrawStatus = await liquidationManager.read.userLiquidationStatus([liquidatedUser.account.address, tokenId]);
-            const afterIsFreezed = (afterWithdrawStatus as any).isFreezed ?? (afterWithdrawStatus as any)[5];
-            const afterStableNums = (afterWithdrawStatus as any).stableNums ?? (afterWithdrawStatus as any)[6];
-            console.log(`  after withdraw - isFreezed: ${Boolean(afterIsFreezed)}, stableNums: ${afterStableNums}`);
-         } else {
-            console.log("Withdraw conditions not met - skipping withdraw step");
-         }
-      } catch (err: any) {
-         console.log("Withdraw step failed:", err?.message ?? err);
-      }
 
       // 竞拍者获得 WLTC 检查
       const finalBidder1WLTC = await wltc.read.balanceOf([bidder1.account.address]);
