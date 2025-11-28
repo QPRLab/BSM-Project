@@ -49,6 +49,7 @@ Through either operation, the NAV of the L token is forcibly reset to 1, thereby
    - AMMSwap.sol
    - AMMLiquidity.sol
    - InterestManager.sol
+   - LTCPriceOracle.sol
    - LiquidationManager.sol
    - AuctionManager.sol
 - Scripts
@@ -167,11 +168,27 @@ npm run dev
 
    _`_calculateAccruedInterest`_ : Internal math helper that computes simple time-proportional interest: principal × annualRate × (holdingTime / secondsPerYear), then adjusts by leverage type (e.g., divide by 8 or 4 for conservative/moderate). It returns interest in wei and is reused by preview and update functions.
 
-- `LiquidationManager.sol` — Liquidation lifecycle and Dutch-style auctions for collateral.
+- `LTCPriceOracle.sol` - LTCPriceOracle is a compact on-chain price feed compatible with the Chainlink V3 interface: it stores historical rounds, supports authorized feeders, and exposes both standard Chainlink view functions and convenience helpers.
+It enforces sane bounds and staleness checks, supports emergency mode with a fixed fallback price, and emits events for price updates and feeder management.
+
+   _`latestRoundData`_ : Chainlink-compatible view that returns the latest round’s data (id, price, timestamps). It returns the emergency price when emergency mode is active and otherwise enforces that the cached price is valid and not too old.
+
+   _`updatePrice`_ : Called by authorized price feeders to publish a new price; it validates bounds and large price changes (emitting InvalidPriceSubmitted or requiring owner approval for big jumps), advances the round ID, stores the round, and emits PriceUpdated. It intentionally records suspicious large changes for operator review rather than silently accepting them.
+
+- `LiquidationManager.sol` — LiquidationManager monitors user leverage positions, computes net asset values (NAV), and triggers liquidations when positions fall below configured thresholds. It coordinates with CustodianFixed to burn leverage tokens and with AuctionManager to create Dutch auctions for reclaimed collateral, while tracking per-user liquidation status and risk levels.
+
+   _`bark`_ : The liquidation trigger (analogous to MakerDAO’s bark) — it verifies a user’s NAV is below the liquidation threshold, calculates the value to burn, destroys the leverage token via custodian.burnToken, updates user status to frozen, and starts an auction by calling AuctionManager.startAuction. It encapsulates the full liquidation flow from detection to auction creation and keeper reward assignment.
 
 
+- `AuctionManager.sol` — AuctionManager coordinates liquidation auctions: it receives triggers (typically from the liquidation manager), computes starting and current prices using the oracle and a linear decrease price calculator, and records auction metadata and keeper rewards. Buyers purchase underlying by paying StableToken; the contract enforces minimum purchase amounts, validates approvals, updates auction accounting, transfers underlying via the Custodian, and settles completed auctions with the LiquidationManager.
 
-- `AuctionManager.sol` — Liquidation lifecycle and Dutch-style auctions for collateral.
+   _`startAuction`_ : Triggered by a caller with CALLER_ROLE to create a new auction record: it computes the starting price using the oracle, calculates keeper rewards, records auction metadata, sends residuals to the original owner, and pays the keeper reward via the CustodianFixed contract. It increments counters and marks the auction active.
+
+   _`resetAuction`_ : Resets an auction’s timer and starting price when price/time conditions are met; it recomputes the starting price via the oracle, recalculates keeper reward, deducts reward from the auction’s underlying accounting, and issues the reward to the triggerer. This keeps auctions progressing if they are not fully filled.
+
+   _`purchaseUnderlying`_ : Allows a buyer to purchase a slice of the auctioned underlying asset by supplying StableToken. It validates price and minimum purchase constraints, computes payment amounts, updates auction state (remaining burn value and sold underlying), transfers underlying to the buyer via CustodianFixed, makes an external callback if requested, and collects stable payment from the buyer through custodian.receiveFromKpr.
+
+
 
 For details, read the contracts in `contracts/` .
 
