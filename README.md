@@ -12,7 +12,7 @@ During the minting process, users must specify two parameters:
 1. **Leverage Type** — options are _Conservative_, _Moderate_, and _Aggressive_. These correspond to S:L minting ratios of **1:8**, **1:4**, and **1:1**, respectively.    
 2. **Mint Price** — the price of the underlying asset at which the user chooses to mint.
 
-![Leverage Types](docs//assets/LeverageTypes.png)
+![Leverage Types](docs/assets/LeverageTypes.png)
 
 If a user supplies an amount $M$ of the underlying asset and selects a minting price $P_0$, the corresponding formula is:
 
