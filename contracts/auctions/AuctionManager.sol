@@ -68,7 +68,7 @@ contract AuctionManager is AccessControl, ReentrancyGuard{
     uint256 public accumulatedRewardInStable = 0;
 
     struct Auction {
-        uint256 valueToBeBurned;  // 剩余抵押品数量 [1e18]
+        uint256 valueToBeBurned;  // 需要銷毀的穩定幣的金額 [1e18]
         int256 underlyingAmount; // 扣除reward后剩余的底层资产数量 [1e18] 有正负
         uint256 soldUnderlyingAmount; //卖掉的underlying数量[1e18]
         address originalOwner;     // 被清算的杠杆币所有者
