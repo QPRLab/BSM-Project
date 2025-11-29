@@ -239,7 +239,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         // 计算用户残值 
         uint256 underlyingValueToUser; 
         if (wmul(nav, balance) > globalConfig.penalty) {
-            underlyingValueToUser = wmul(nav, balance) - globalConfig.penalty; 
+            underlyingValueToUser = wmul(nav-globalConfig.penalty, balance) ; 
         } else {
             underlyingValueToUser = 0;
         }
@@ -253,7 +253,7 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         userLiquidationStatus[user][tokenId].balance =0 ;
 
         // 创建荷兰式拍卖
-        auctionId = auction.startAuction(valueToBeBurned, globalConfig.penalty, user, tokenId, underlyingValueToUser, kpr);
+        auctionId = auction.startAuction(valueToBeBurned,  wmul(globalConfig.penalty, balance), user, tokenId, underlyingValueToUser, kpr);
 
         // 记录auctionID
         userLiquidationStatus[user][tokenId].auctionId =auctionId ;
