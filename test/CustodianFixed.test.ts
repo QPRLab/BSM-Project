@@ -18,6 +18,7 @@ describe("CustodianFixed - core flows", function () {
   let publicClient: any;
 
   before(async () => {
+    console.log("=====================CustodianFixed Tests (Begin)====================");
     const { viem } = await network.connect();
     publicClient = await viem.getPublicClient();
     [deployer, user] = await viem.getWalletClients();
@@ -194,6 +195,9 @@ describe("CustodianFixed - core flows", function () {
     const deltaUnderlying = wltcBalAfter - wltcBalBefore;
     assert.ok(deltaUnderlying >= 0n, "unexpected underlying change");
     assert.ok(deltaUnderlying >= underlyingAmountInWei - 1n, "underlying returned should match expected (within 1 wei)");
+
   });
+
+  
 
 });

@@ -1,5 +1,28 @@
 # BSM Project
 
+## Table of contents
+- Project Introduction
+- Quick start
+- Contracts(brief)
+   - CustodianFixed.sol
+   - StableToken.sol
+   - MultiLeverageToken.sol
+   - AMMSwap.sol
+   - AMMLiquidity.sol
+   - InterestManager.sol
+   - LTCPriceOracle.sol
+   - LiquidationManager.sol
+   - AuctionManager.sol
+- Testing
+- Scripts
+- Deployment 
+- verification
+- Frontend
+
+---
+
+## Project Introduction
+
 This repository contains a Hardhat + TypeScript project implementing an LTC-backed leveraged stablecoin system. It includes Solidity contracts (core engine, AMM, auctions/liquidations, interest manager), scripts for deployment and interaction, unit tests, and a Vue 3 frontend.
 
 Inspired by the concept of structure funds, we split a virtual currency(e.g., LTC)into two components: a **Stable Token (S)** and a **Leverage Token (L)**.
@@ -40,28 +63,7 @@ Through either operation, the NAV of the L token is forcibly reset to 1, thereby
 
 ---
 
-## Table of contents
-- Quick start
-- Contracts(brief)
-   - CustodianFixed.sol
-   - StableToken.sol
-   - MultiLeverageToken.sol
-   - AMMSwap.sol
-   - AMMLiquidity.sol
-   - InterestManager.sol
-   - LTCPriceOracle.sol
-   - LiquidationManager.sol
-   - AuctionManager.sol
-- Scripts
-- Testing
-- Frontend
-- Deployment & verification
-- CI recommendations
-- Security & push checklist
-- Contributing
-- License
 
----
 
 ## Quick start (developer)
 
@@ -202,6 +204,13 @@ For details, read the contracts in `contracts/` .
 
 ---
 
+## Testing
+
+- Unit tests are in `test/` (Hardhat + viem style). Use `npx hardhat test` to run all tests.
+- Use `npx hardhat test test/LiquidationAuction.test.ts` to test the liquidation auction flow.
+
+
+---
 ## Scripts
 
 Scripts are in `scripts/` and include examples for minting mocks, interacting with the AMM, running auctions, and verifying contracts. Examples:
@@ -214,25 +223,15 @@ Scripts are in `scripts/` and include examples for minting mocks, interacting wi
 
 Read headers of each script for usage details and required environment variables.
 
----
-
-## Testing
-
-- Unit tests are in `test/` (Hardhat + viem style). Use `npx hardhat test`.
-- Mocks provided: `QuoterV2Mock`, `UniversalRouterMock`, `WLTCMock`, `USDCMock` — use them for deterministic DEX behavior.
 
 
 ---
 
-## Frontend
-
-- Vue 3 + Vite project lives in `frontend/`.
-- Key helper: `frontend/src/utils/contracts.ts` centralizes ABI loading and read/write contract factories.
-- Build and run via Vite during development: `cd frontend && npm run dev`.
+## Deployment 
 
 ---
 
-## Deployment & verification
+## verification
 
 - Use Hardhat ignition scripts (in `ignition/`) or the `scripts/` helpers to deploy modules.
 - Example (local/sepolia flow):
@@ -248,57 +247,8 @@ npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
 
 ---
 
-## Continuous integration (recommended)
+## Frontend
 
-- Run on PRs: `npm ci`, `npx tsc --noEmit`, `npx hardhat test`.
-- Keep secrets (RPC keys, private keys) in GitHub Secrets. Do not commit `.env` files.
-- Example workflow: run typecheck + unit tests on push/PR; run E2E in a protected branch or separate job.
-
----
-
-## Security & push checklist
-
-Before pushing to remote (public GitHub):
-
-1. Remove secrets and large artifacts:
-   - `git rm --cached path/to/secret`
-   - Ensure `.gitignore` contains `.env*`, `ignition/deployments/`, `artifacts/`, `node_modules/`, `*.pptx`.
-2. Run tests and typecheck locally:
-   - `npx tsc --noEmit` and `npx hardhat test`
-3. Scan for secrets with a tool (git-secrets, truffleHog) or the provided `create_and_push.ps1` script.
-4. Create a meaningful commit and PR with description and CI results.
-
-Security notes:
-- Do not store private keys or mnemonic phrases in the repo.
-- Use role-based access in contracts (ADMIN_ROLE, AUCTION_ROLE, etc.) and restrict privileged calls in production.
-
----
-
-## Contributing
-
-- Please open issues and PRs. Include unit tests for any contract logic changes.
-- Code style: TypeScript + Prettier for frontend/scripts; prefer small, focused commits.
-
----
-
-## License
-
-This project does not include a license file by default. Add a `LICENSE` file (e.g., MIT) if you intend to open-source this repository.
-
----
-
-## Contacts / Maintainers
-
-- Add project maintainers, primary contacts, and security disclosure contact here.
-
----
-
-## Known issues & roadmap
-
-- AMMSwap buy-flow requires careful ordering: ensure USDC/S balances are present on-contract before calling `UniversalRouter`. See `AMMSwap` TODOs and unit tests.
-- Tests: `test/CustodianFixed.test.ts` exists but may require iteration to pass in some environments; run unit tests and open issues for failing cases.
-
----
-
-If you want I can commit this `README.md` for you and optionally add a CI workflow and `CONTRIBUTING.md`/`SECURITY.md` files. 
-
+- Vue 3 + Vite project lives in `frontend/`.
+- Key helper: `frontend/src/utils/contracts.ts` centralizes ABI loading and read/write contract factories.
+- Build and run via Vite during development: `cd frontend && npm run dev`.

@@ -18,7 +18,7 @@ import { formatEther, formatUnits, parseEther, parseUnits, zeroAddress } from "v
 
 describe("Oracle Tests - Price Feed Management", function () {
 
-
+  console.log("=====================Oracle Tests (Begin)====================");
   // Oracle 使用18位精度（LTCPriceOracle 合约内部使用18位）
   const INITIAL_PRICE = parseEther("120"); // 18位精度: 120 USD
   const NEW_PRICE = parseEther("150"); // 18位精度: 150 USD
@@ -329,5 +329,5 @@ describe("Oracle Tests - Price Feed Management", function () {
       }
     });
   });
-
+  
 });

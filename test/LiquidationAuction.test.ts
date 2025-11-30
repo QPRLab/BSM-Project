@@ -15,6 +15,8 @@ import { ethers } from 'ethers';
  */
 
 describe("Liquidation + Auction integration", function () {
+
+  console.log("=====================LiquidationAuction Tests (Begin)====================");
   let deployer: any;
   let keeper: any;
   let bidder1: any;
@@ -33,7 +35,7 @@ describe("Liquidation + Auction integration", function () {
   let liquidationManager: any;
   let priceCalculator: any;
 
-  before(async () => {
+   before(async () => {
     const { viem } = await network.connect();
     publicClient = await viem.getPublicClient();
     const walletClients = await viem.getWalletClients();
@@ -182,12 +184,12 @@ describe("Liquidation + Auction integration", function () {
     
     console.log("----------------------------------------------------------");
     console.log("Setup complete:");
-    console.log("liquidatedUser mint 10 WLTC，@ mintPrice = 100，Leverage Tpye = Aggressive(this is 1S1L) ");
-    console.log("liquidatedUser will get 500 stable token & 500 multiLeverageToken");
+    console.log("\tliquidatedUser mint 10 WLTC，@ mintPrice = 100，Leverage Tpye = Aggressive(this is 1S1L) ");
+    console.log("\tliquidatedUser will get 500 stable token & 500 multiLeverageToken");
     console.log("----------------------------------------------------------");
-  });
+   });
 
-  it("test Liquidation & Auction", async () => {
+   it("test Liquidation & Auction", async () => {
 
     let liquidatedLtoken = parseEther("500");
 
@@ -206,8 +208,8 @@ describe("Liquidation + Auction integration", function () {
     result = await custodian.read.getSingleLeverageTokenNavV2([liquidatedUser.account.address, tokenId]);
     let grossNav = result[1] as bigint;
     let netNav = result[2] as bigint;
-    console.log("Gross NAV(LTC = 100):", ethers.formatEther(grossNav));
-    console.log("Net NAV(LTC = 100):", ethers.formatEther(netNav));
+    console.log("\tGross NAV(LTC = 100):", ethers.formatEther(grossNav));
+    console.log("\tNet NAV(LTC = 100):", ethers.formatEther(netNav));
 
     // drive price down so NAV falls below liquidation threshold
     let tx = await oracle.write.updatePrice([parseEther("80")]);
@@ -216,8 +218,8 @@ describe("Liquidation + Auction integration", function () {
     result = await custodian.read.getSingleLeverageTokenNavV2([liquidatedUser.account.address, tokenId]);
     grossNav = result[1] as bigint;
     netNav = result[2] as bigint;
-    console.log("Gross NAV(LTC = 80):", ethers.formatEther(grossNav));
-    console.log("Net NAV(LTC = 80):", ethers.formatEther(netNav));    
+    console.log("\tGross NAV(LTC = 80):", ethers.formatEther(grossNav));
+    console.log("\tNet NAV(LTC = 80):", ethers.formatEther(netNav));    
 
     // 当 NAV 高于清算阈值时，调用 bark 应该被 revert
     try {
@@ -240,8 +242,8 @@ describe("Liquidation + Auction integration", function () {
     result = await custodian.read.getSingleLeverageTokenNavV2([liquidatedUser.account.address, tokenId]);
     grossNav = result[1] as bigint;
     netNav = result[2] as bigint;
-    console.log("Gross NAV(LTC = 60):", ethers.formatEther(grossNav));
-    console.log("Net NAV(LTC = 60):", ethers.formatEther(netNav));    
+    console.log("\tGross NAV(LTC = 60):", ethers.formatEther(grossNav));
+    console.log("\tNet NAV(LTC = 60):", ethers.formatEther(netNav));    
     console.log("----------------------------------------------------------");
     
     // 当 NAV 低于清算阈值时，调用 bark 应该不被 revert
@@ -256,91 +258,79 @@ describe("Liquidation + Auction integration", function () {
     console.log("Liquidation status after bark - auctionId:", auctionId.toString());
     let isAuctionIdActive = await auctionManager.read.isActiveAuction([auctionId]) as boolean;
     assert.ok(isAuctionIdActive, "auction should be active after bark");
-    console.log("isAuctionIdActive:", isAuctionIdActive);
+    console.log("\tisAuctionIdActive:", isAuctionIdActive);
 
     // bidder1 approve custodian to allow AuctionManager/custodian to pull S
     tx = await bidder1.writeContract({ address: stableToken.address, abi: stableToken.abi, functionName: "approve", args: [custodian.address, parseEther("1000")] });
     await publicClient.waitForTransactionReceipt({ hash: tx });
+    tx = await bidder2.writeContract({ address: stableToken.address, abi: stableToken.abi, functionName: "approve", args: [custodian.address, parseEther("1000")] });
+    await publicClient.waitForTransactionReceipt({ hash: tx });
 
-        const auctionInfoBefore = await auctionManager.read.auctions([auctionId]);
+   const auctionInfoBefore = await auctionManager.read.auctions([auctionId]);
     const underlyingBefore = auctionInfoBefore[1] as bigint; //剩余抵押品的数量，需要拍卖的抵押品数量
     const startingP = auctionInfoBefore[6] as bigint; //起始价格
-    console.log("auctions([auctionId].underlyingAmount:", ethers.formatEther(underlyingBefore));
-    console.log("auctions([auctionId].startingPrice:", ethers.formatEther(startingP));
+    console.log("\tauctions([auctionId].underlyingAmount:", ethers.formatEther(underlyingBefore));
+    console.log("\tauctions([auctionId].startingPrice:", ethers.formatEther(startingP));
     console.log("----------------------------------------------------------");
 
-    console.log("Bidder1 is bidding:");
-    const wltcBalanceOfBidderBeforeBidding = await wltc.read.balanceOf([bidder1.account.address]);
-    const stableBalanceOfBidderBeforeBidding = await stableToken.read.balanceOf([bidder1.account.address]);
     const maxPurchase = parseEther("5"); // try to purchase 5 WLTC; parseEther:字符轉18位；ethers.formatEther(underlyingSold1)：18位轉字符
-    const currentPriceArr = await auctionManager.read.getAuctionStatus([auctionId]);
-    const currentPrice = currentPriceArr[1] as bigint;
-    console.log("Current Price:", ethers.formatEther(currentPrice));
-    console.log("Bidder1 attempts to purchase underlying amount:", ethers.formatEther(maxPurchase));
+
+    console.log("Bidder1 is bidding:");
+    let wltcBalanceOfBidderBeforeBidding = await wltc.read.balanceOf([bidder1.account.address]);
+    let stableBalanceOfBidderBeforeBidding = await stableToken.read.balanceOf([bidder1.account.address]);
+    let currentPriceArr = await auctionManager.read.getAuctionStatus([auctionId]);
+    let currentPrice = currentPriceArr[1] as bigint;
+    console.log("\tCurrent Price:", ethers.formatEther(currentPrice));
+    console.log("\tBidder1 attempts to purchase underlying amount:", ethers.formatEther(maxPurchase));
     tx = await bidder1.writeContract({ address: auctionManager.address, abi: auctionManager.abi, 
       functionName: "purchaseUnderlying", args: [auctionId, maxPurchase, currentPrice, bidder1.account.address, "0x"] });
     await publicClient.waitForTransactionReceipt({ hash: tx });
-    const wltcBalanceOfBidderAfterBidding = await wltc.read.balanceOf([bidder1.account.address]);
-    const stableBalanceOfBidderAfterBidding = await stableToken.read.balanceOf([bidder1.account.address]);
+    let wltcBalanceOfBidderAfterBidding = await wltc.read.balanceOf([bidder1.account.address]);
+    let stableBalanceOfBidderAfterBidding = await stableToken.read.balanceOf([bidder1.account.address]);
    console.log("Bidder1 purchase results:");
 
-   console.log("The wltc amount (bidder1 buy) : ",ethers.formatEther(wltcBalanceOfBidderAfterBidding-wltcBalanceOfBidderBeforeBidding) )
-   console.log("The stable amount (bidder1 spend) : ", ethers.formatEther(stableBalanceOfBidderBeforeBidding - stableBalanceOfBidderAfterBidding))
-   const auctionInfoAfterBid1 = await auctionManager.read.auctions([auctionId]);
-   const underlyingSold1 = auctionInfoAfterBid1[2] as bigint; // sold underlying so far
+   console.log("\tThe wltc amount (bidder1 buy) : ",ethers.formatEther(wltcBalanceOfBidderAfterBidding-wltcBalanceOfBidderBeforeBidding) )
+   console.log("\tThe stable amount (bidder1 spend) : ", ethers.formatEther(stableBalanceOfBidderBeforeBidding - stableBalanceOfBidderAfterBidding))
+
    console.log("----------------------------------------------------------");
    isAuctionIdActive = await auctionManager.read.isActiveAuction([auctionId]) as boolean;
    if (!isAuctionIdActive) {
       console.log("isAuctionIdActive:", isAuctionIdActive);
-      console.log("Auction ended");
-      // assert.ok(underlyingSold1 === underlyingBefore, "expected some underlying sold");
+      console.log("Auction ended after Bid1");
+      console.log("----------------------------------------------------------");
    }
    else
    {
+      console.log("isAuctionIdActive:", isAuctionIdActive);
+      console.log("Auction continued after Bid1");
+      console.log("----------------------------------------------------------");
+      console.log("Bidder2 is bidding:");
+      let wltcBalanceOfBidderBeforeBidding = await wltc.read.balanceOf([bidder2.account.address]);
+      let stableBalanceOfBidderBeforeBidding = await stableToken.read.balanceOf([bidder2.account.address]);
+      let currentPriceArr = await auctionManager.read.getAuctionStatus([auctionId]);
+      let currentPrice = currentPriceArr[1] as bigint;
+      console.log("\tCurrent Price:", ethers.formatEther(currentPrice));
+      console.log("\tBidder2 attempts to purchase underlying amount:", ethers.formatEther(maxPurchase));
+      tx = await bidder2.writeContract({ address: auctionManager.address, abi: auctionManager.abi, 
+         functionName: "purchaseUnderlying", args: [auctionId, maxPurchase, currentPrice, bidder2.account.address, "0x"] });
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+      let wltcBalanceOfBidderAfterBidding = await wltc.read.balanceOf([bidder2.account.address]);
+      let stableBalanceOfBidderAfterBidding = await stableToken.read.balanceOf([bidder2.account.address]);
+      console.log("Bidder2 purchase results:");
 
-
+      console.log("\tThe wltc amount (bidder2 buy) : ",ethers.formatEther(wltcBalanceOfBidderAfterBidding-wltcBalanceOfBidderBeforeBidding) )
+      console.log("\tThe stable amount (bidder2 spend) : ", ethers.formatEther(stableBalanceOfBidderBeforeBidding - stableBalanceOfBidderAfterBidding))
+      console.log("----------------------------------------------------------");
    }
-   // console.log("...Bider2 is bidding ...");
-   // if (underlyingSold1 >= underlyingBefore) {
-   //    console.log("Auction fully filled After Bid1");
-   //    // sold should be equal to the original available underlying (or equal to maxPurchase when underlying <= maxPurchase)
-   //    assert.ok(underlyingSold1 === underlyingBefore, "expected some underlying sold");
-   // } 
-   // else {
-   //    // Auction still active — proceed with second bidder
-   //    // bidder2 approve custodian to allow AuctionManager/custodian to pull S
-   //    tx = await bidder2.writeContract({ address: stableToken.address, abi: stableToken.abi, functionName: "approve", args: [custodian.address, parseEther("1000")] });
-   //    await publicClient.waitForTransactionReceipt({ hash: tx });
 
-   //    tx = await bidder2.writeContract({ address: auctionManager.address, abi: auctionManager.abi, 
-   //       functionName: "purchaseUnderlying", args: [auctionId, maxPurchase, currentPrice, bidder2.account.address, "0x"] });
-   //    await publicClient.waitForTransactionReceipt({ hash: tx });
+   isAuctionIdActive = await auctionManager.read.isActiveAuction([auctionId]) as boolean;
+   if (!isAuctionIdActive) {
+      console.log("isAuctionIdActive:", isAuctionIdActive);
+      console.log("Auction ended after Bid2");
+      console.log("----------------------------------------------------------");
+   }  
 
-   //    const auctionInfoRemaining = await auctionManager.read.auctions([auctionId]);
-   //    const underlyingSold2 = auctionInfoRemaining[2] as bigint;
-   //    const underlyingRemaining = auctionInfoRemaining[1] as bigint;
-   //    console.log("Underlying sold in auction - stage 2:", ethers.formatEther(underlyingSold2));
-   //    console.log("Auction info Remaining - underlyingAmount:", ethers.formatEther(underlyingRemaining));
+   });
 
-   //    // After stage2 the sold underlying should have increased and remaining should be 0
-   //    // assert.ok(underlyingSold2 > underlyingSoldBid1, "expected sold underlying to increase after stage 2");
-   //    // assert.ok(underlyingRemaining === 0n, "expected remaining underlying to be zero after stage 2");
-   // }
-
-
-   //    // 竞拍者获得 WLTC 检查
-   //    const finalBidder1WLTC = await wltc.read.balanceOf([bidder1.account.address]);
-   //    const finalBidder2WLTC = await wltc.read.balanceOf([bidder2.account.address]);
-   //    console.log(`Final bidder1 WLTC: ${ethers.formatEther(finalBidder1WLTC as bigint)}`);
-   //    console.log(`Final bidder2 WLTC: ${ethers.formatEther(finalBidder2WLTC as bigint)}`);
-
-   //    // 系统整体状态检查（活跃拍卖数）
-   //    try {
-   //       const activeAuctionCount = await auctionManager.read.getActiveAuctionCount([]);
-   //       console.log(`Active auction count: ${activeAuctionCount}`);
-   //    } catch (e : any) {
-   //       console.log("Could not read active auction count:", e?.message ?? e);
-   //    }
-
-  });
+   
 });

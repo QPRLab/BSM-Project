@@ -45,6 +45,7 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
   const initialPrice = 120n * 10n ** 18n; // LTC 初始价格 $120
 
   before(async function () {
+    console.log("=====================AMMSwap Tests (Begin)====================");
     // console.log("\n=== 开始部署合约 ===");
     // console.log("Deployer address:", deployer);
     // console.log("User address:", user);
@@ -338,7 +339,8 @@ describe("AMMSwap - Basic Tests (Without DEX)", async function () {
     assert(stableGained > 0n, "应该获得了 Stable tokens");
     assert((usdcSpent as unknown as bigint) === (swapAmount as unknown as bigint), "应该花费指定数量的 USDC");
     // console.log("\n✅ Test 3 通过: swapUsdcToStable 成功执行");
+
   });
 
-
+  
 });
