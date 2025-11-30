@@ -238,8 +238,8 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
 
         // 计算用户残值 
         uint256 underlyingValueToUser; 
-        if (wmul(nav, balance) > globalConfig.penalty) {
-            underlyingValueToUser = wmul(nav, balance) - globalConfig.penalty; 
+        if (nav> globalConfig.penalty) {
+            underlyingValueToUser = wmul(nav-globalConfig.penalty, balance) ; 
         } else {
             underlyingValueToUser = 0;
         }
