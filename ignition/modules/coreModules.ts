@@ -82,10 +82,10 @@ export default buildModule("coreModules", (m) => {
   const PRICE_CALCULATOR_PARAMS = {
     TAU: TIME_PARAMS.ONE_HOUR          // 线性递减时间参数
   };
-  const linearDecrease = m.contract("LinearDecrease", [PRICE_CALCULATOR_PARAMS.TAU], {after: [custodianFixed]});
-  const auctionManager = m.contract("AuctionManager", [stableTokenAddress,custodianFixed], { after: [linearDecrease]});
+  
+  const auctionManager = m.contract("AuctionManager", [stableTokenAddress,custodianFixed], { after: [custodianFixed]});
   const liquidationManager = m.contract("LiquidationManager", [multiLeverageTokenAddress, custodianFixed], {after: [auctionManager]});
-
+  const linearDecrease = m.contract("LinearDecrease", [PRICE_CALCULATOR_PARAMS.TAU, auctionManager], {after: [liquidationManager]});
 
 
   // =====================================================
@@ -97,7 +97,7 @@ export default buildModule("coreModules", (m) => {
   const multiLeverageToken = m.contractAt("MultiLeverageToken", multiLeverageTokenAddress);
   
   // 初始化 InterestManager（传入未来地址 futures）
-  const initializeInterestManagerCall = m.call(interestManager, "initialize", [multiLeverageTokenAddress, custodianFixed],{ after: [liquidationManager] });
+  const initializeInterestManagerCall = m.call(interestManager, "initialize", [multiLeverageTokenAddress, custodianFixed],{ after: [linearDecrease] });
   // 设置 custodian
   const setStableCustodianCall = m.call(stableToken, "setCustodian", [custodianFixed],{ after: [initializeInterestManagerCall] });
   const setLeverageCustodianCall = m.call(multiLeverageToken, "setCustodian", [custodianFixed],{ after: [setStableCustodianCall] });
@@ -110,7 +110,7 @@ export default buildModule("coreModules", (m) => {
   const AUCTION_PARAMS = {
     PRICE_MULTIPLIER: "1.0",           // 起始价格乘数
     RESET_TIME: TIME_PARAMS.TWO_HOURS,  // 重置时间
-    MIN_AUCTION_AMOUNT: "100",          // 最小拍卖金额
+    MIN_AUCTION_AMOUNT: "1",          // 最小拍卖金额
     PRICE_DROP_THRESHOLD: "0.8",        // 价格下降阈值
     PERCENTAGE_REWARD: "0.01",          // 百分比激励 (1%)
     FIXED_REWARD: "10"                  // 固定激励
@@ -129,7 +129,7 @@ export default buildModule("coreModules", (m) => {
 
   // 清算管理器参数
   const LIQUIDATION_PARAMS = {
-    ADJUSTMENT_THRESHOLD: "0.5",        // 调整阈值
+    ADJUSTMENT_THRESHOLD: "0.7",        // 调整阈值
     LIQUIDATION_THRESHOLD: "0.3",       // 清算阈值
     PENALTY: "0.03"                     // 惩罚金 (3%)
   };

@@ -1394,15 +1394,15 @@ function _calculateV3PriceImpactExactOutput(
         if(token0 == address(underlyingToken))
         {
             //wltc/usdc
-            uint256 token0Decimals = 18;
-            uint256 token1Decimals = 6;
+            token0Decimals = 18;
+            token1Decimals = 6;
 
         }
         else
         {
             //usdc/wltc
-            uint256 token0Decimals = 6;
-            uint256 token1Decimals = 18;
+            token0Decimals = 6;
+            token1Decimals = 18;
         }
         uint256 price_modified = price_18decimals * (10 ** (token0Decimals - token1Decimals));//表示的是1token0 = ?token1, 单位为wei, 经单位调整
 

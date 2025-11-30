@@ -187,8 +187,12 @@ async function main() {
     
     if (reserveStable < minLiquidityStable || reserveUsdc < minLiquidityUsdc) {
       console.log("  ⚠️ 流动性不足，添加流动性...");
-      await stableContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], 6000000n * 10n ** 18n]);
-      await usdcContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], 6000000n * 10n ** 6n]);
+      const approveTx = await stableContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], 6000000n * 10n ** 18n]);
+      const approveTx2 = await usdcContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], 6000000n * 10n ** 6n]);
+      //等待批准交易完成
+      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      await publicClient.waitForTransactionReceipt({ hash: approveTx2 });
+      console.log("  ✅ 批准完成");
       const addTx = await ammLiquidityContract.write.addLiquidityStable([5000000n * 10n ** 18n]);
       await publicClient.waitForTransactionReceipt({ hash: addTx });
       const newReserves = await ammLiquidityContract.read.getReserves([]) as readonly [bigint, bigint];
@@ -232,131 +236,131 @@ async function main() {
   // =====================================================================
   // 第2部分：测试 Stable -> USDC 交易
   // =====================================================================
-  // {
-  //   console.log("🔄 ===== 第2部分：Stable -> USDC 交易测试 =====\n");
+  {
+    console.log("🔄 ===== 第2部分：Stable -> USDC 交易测试 =====\n");
     
-  //   const stableIn = 10n * 10n ** 18n;
+    const stableIn = 10n * 10n ** 18n;
     
-  //   const stableBalanceBefore = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //   const usdcBalanceBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const stableBalanceBefore = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const usdcBalanceBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
 
-  //   //check allowance
-  //   const stableAllowance = await stableContract.read.allowance([USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"]]) as bigint;
-  //   if (stableAllowance < stableIn) {
-  //     console.log(`⚠️  Stable 账户授权不足，正在授权...`);
-  //     const approveTx = await stableContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], stableIn]);
-  //     await publicClient.waitForTransactionReceipt({ hash: approveTx });
-  //     console.log(`✅ 授权成功`);
-  //   } else {
-  //     console.log(`✅ Stable 账户授权充足`);
-  //   }
+    //check allowance
+    const stableAllowance = await stableContract.read.allowance([USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"]]) as bigint;
+    if (stableAllowance < stableIn) {
+      console.log(`⚠️  Stable 账户授权不足，正在授权...`);
+      const approveTx = await stableContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], stableIn]);
+      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      console.log(`✅ 授权成功`);
+    } else {
+      console.log(`✅ Stable 账户授权充足`);
+    }
     
-  //   console.log("📤 执行交易...");
-  //   const tx = await ammSwapContract.write.swapStableToUsdc([stableIn]);
-  //   await publicClient.waitForTransactionReceipt({ hash: tx });
+    console.log("📤 执行交易...");
+    const tx = await ammSwapContract.write.swapStableToUsdc([stableIn]);
+    await publicClient.waitForTransactionReceipt({ hash: tx });
     
-  //   const stableBalanceAfter = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //   const usdcBalanceAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const stableBalanceAfter = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const usdcBalanceAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
     
-  //   const stableSpent = stableBalanceBefore - stableBalanceAfter;
-  //   const usdcReceived = usdcBalanceAfter - usdcBalanceBefore;
-  //   const unitCost = (stableSpent * 10n**6n) / usdcReceived;
+    const stableSpent = stableBalanceBefore - stableBalanceAfter;
+    const usdcReceived = usdcBalanceAfter - usdcBalanceBefore;
+    const unitCost = (stableSpent * 10n**6n) / usdcReceived;
     
-  //   console.log("\n📊 交易结果:");
-  //   console.log(`  付出 Stable: ${formatEther(stableSpent)}`);
-  //   console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
-  //   console.log(`  单位成本: ${formatUnits(unitCost, 18)} Stable per USDC`);
-  //   console.log(`  兑换率: ${formatUnits((usdcReceived * 10n**18n) / stableSpent, 6)} USDC per Stable`);
+    console.log("\n📊 交易结果:");
+    console.log(`  付出 Stable: ${formatEther(stableSpent)}`);
+    console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
+    console.log(`  单位成本: ${formatUnits(unitCost, 18)} Stable per USDC`);
+    console.log(`  兑换率: ${formatUnits((usdcReceived * 10n**18n) / stableSpent, 6)} USDC per Stable`);
     
-  //   console.log("\n✅ 第2部分完成\n");
-  // }
+    console.log("\n✅ 第2部分完成\n");
+  }
 
   // =====================================================================
   // 第3部分：测试 USDC -> Stable 交易
   // =====================================================================
-  // {
-  //   console.log("🔄 ===== 第3部分：USDC -> Stable 交易测试 =====\n");
+  {
+    console.log("🔄 ===== 第3部分：USDC -> Stable 交易测试 =====\n");
     
-  //   const usdcIn = 10n * 10n ** 6n;
+    const usdcIn = 10n * 10n ** 6n;
     
-  //   const usdcBalanceBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //   const stableBalanceBefore = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const usdcBalanceBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const stableBalanceBefore = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
 
-  //   //check allowance
-  //   const usdcAllowance = await usdcContract.read.allowance([USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"]]) as bigint;
-  //   if (usdcAllowance < usdcIn) {
-  //     console.log(`⚠️  USDC 账户授权不足，正在授权...`);
-  //     const approveTx = await usdcContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], usdcIn]);
-  //     await publicClient.waitForTransactionReceipt({ hash: approveTx });
-  //     console.log(`✅ 授权成功`);
-  //   } else {
-  //     console.log(`✅ USDC 账户授权充足`);
-  //   }
+    //check allowance
+    const usdcAllowance = await usdcContract.read.allowance([USER_ADDRESS, deployedAddresses["ammModules#AMMLiquidity"]]) as bigint;
+    if (usdcAllowance < usdcIn) {
+      console.log(`⚠️  USDC 账户授权不足，正在授权...`);
+      const approveTx = await usdcContract.write.approve([deployedAddresses["ammModules#AMMLiquidity"], usdcIn]);
+      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      console.log(`✅ 授权成功`);
+    } else {
+      console.log(`✅ USDC 账户授权充足`);
+    }
     
-  //   console.log("📤 执行交易...");
-  //   const tx = await ammSwapContract.write.swapUsdcToStable([usdcIn]);
-  //   await publicClient.waitForTransactionReceipt({ hash: tx });
+    console.log("📤 执行交易...");
+    const tx = await ammSwapContract.write.swapUsdcToStable([usdcIn]);
+    await publicClient.waitForTransactionReceipt({ hash: tx });
     
-  //   const usdcBalanceAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //   const stableBalanceAfter = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const usdcBalanceAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+    const stableBalanceAfter = await stableContract.read.balanceOf([USER_ADDRESS]) as bigint;
     
-  //   const usdcSpent = usdcBalanceBefore - usdcBalanceAfter;
-  //   const stableReceived = stableBalanceAfter - stableBalanceBefore;
-  //   const unitCost = (usdcSpent * 10n**18n) / stableReceived;
+    const usdcSpent = usdcBalanceBefore - usdcBalanceAfter;
+    const stableReceived = stableBalanceAfter - stableBalanceBefore;
+    const unitCost = (usdcSpent * 10n**18n) / stableReceived;
     
-  //   console.log("\n📊 交易结果:");
-  //   console.log(`  付出 USDC: ${formatUnits(usdcSpent, 6)}`);
-  //   console.log(`  得到 Stable: ${formatEther(stableReceived)}`);
-  //   console.log(`  单位成本: ${formatUnits(unitCost, 6)} USDC per Stable`);
-  //   console.log(`  兑换率: ${formatUnits((stableReceived * 10n**6n) / usdcSpent, 18)} Stable per USDC`);
+    console.log("\n📊 交易结果:");
+    console.log(`  付出 USDC: ${formatUnits(usdcSpent, 6)}`);
+    console.log(`  得到 Stable: ${formatEther(stableReceived)}`);
+    console.log(`  单位成本: ${formatUnits(unitCost, 6)} USDC per Stable`);
+    console.log(`  兑换率: ${formatUnits((stableReceived * 10n**6n) / usdcSpent, 18)} Stable per USDC`);
     
-  //   console.log("\n✅ 第3部分完成\n");
-  // }
+    console.log("\n✅ 第3部分完成\n");
+  }
 
   // =====================================================================
   // 第4部分：测试 Leverage -> USDC 交易
   // =====================================================================
-  // {
-  //   console.log("🔄 ===== 第4部分：Leverage -> USDC 交易测试 =====\n");
+  {
+    console.log("🔄 ===== 第4部分：Leverage -> USDC 交易测试 =====\n");
     
-  //   const leverageTokenId = 2n;
-  //   const userLeverageBalance = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+    const leverageTokenId = 2n;
+    const userLeverageBalance = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
     
-  //   if (userLeverageBalance > 0n) {
-  //     const lAmountPercentage = 10n; // 赎回 10%
+    if (userLeverageBalance > 0n) {
+      const lAmountPercentage = 10n; // 赎回 10%
       
-  //     try {
-  //       console.log("📤 步骤1: 授权Leverage Token...");
-  //       await leverageContract.write.setApprovalForAll([deployedAddresses["ammModules#AMMSwap"], true]);
+      try {
+        console.log("📤 步骤1: 授权Leverage Token...");
+        await leverageContract.write.setApprovalForAll([deployedAddresses["ammModules#AMMSwap"], true]);
         
-  //       const usdcBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //       const leverageBefore = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+        const usdcBefore = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+        const leverageBefore = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
         
-  //       console.log("📤 步骤2: 执行交易...");
-  //       const tx = await ammSwapContract.write.swapLeverageToUsdc([leverageTokenId, lAmountPercentage]);
-  //       await publicClient.waitForTransactionReceipt({ hash: tx });
+        console.log("📤 步骤2: 执行交易...");
+        const tx = await ammSwapContract.write.swapLeverageToUsdc([leverageTokenId, lAmountPercentage]);
+        await publicClient.waitForTransactionReceipt({ hash: tx });
         
-  //       const usdcAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
-  //       const leverageAfter = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
+        const usdcAfter = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
+        const leverageAfter = await leverageContract.read.balanceOf([USER_ADDRESS, leverageTokenId]) as bigint;
         
-  //       const leverageSpent = leverageBefore - leverageAfter;
-  //       const usdcReceived = usdcAfter - usdcBefore;
-  //       const unitCost = (leverageSpent * 10n**6n) / usdcReceived;
+        const leverageSpent = leverageBefore - leverageAfter;
+        const usdcReceived = usdcAfter - usdcBefore;
+        const unitCost = (leverageSpent * 10n**6n) / usdcReceived;
         
-  //       console.log("\n📊 交易结果:");
-  //       console.log(`  付出 Leverage: ${formatEther(leverageSpent)} L`);
-  //       console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
-  //       console.log(`  单位成本: ${formatUnits(unitCost, 18)} L per USDC`);
+        console.log("\n📊 交易结果:");
+        console.log(`  付出 Leverage: ${formatEther(leverageSpent)} L`);
+        console.log(`  得到 USDC: ${formatUnits(usdcReceived, 6)}`);
+        console.log(`  单位成本: ${formatUnits(unitCost, 18)} L per USDC`);
         
-  //     } catch (error: any) {
-  //       console.log(`⚠️ 交易失败: ${error.shortMessage || error.message}`);
-  //     }
-  //   } else {
-  //     console.log("⚠️ 用户没有Leverage Token，跳过测试");
-  //   }
+      } catch (error: any) {
+        console.log(`⚠️ 交易失败: ${error.shortMessage || error.message}`);
+      }
+    } else {
+      console.log("⚠️ 用户没有Leverage Token，跳过测试");
+    }
     
-  //   console.log("\n✅ 第4部分完成\n");
-  // }
+    console.log("\n✅ 第4部分完成\n");
+  }
 
   // =====================================================================
   // 第5部分：测试 USDC -> Leverage 交易（完整流程）

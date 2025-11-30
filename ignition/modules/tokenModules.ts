@@ -36,6 +36,7 @@ export default buildModule("tokenModules", (m) => {
   const wltc = m.contract("WLTCMock");
   const usdc = m.contract("USDCMock", [],{ after: [wltc] });
   const stableToken = m.contract("StableToken", [],{ after: [usdc] });
+  // const stableToken = m.contract("StableToken", []);
   const multiLeverageToken = m.contract("MultiLeverageToken", ["ipfs://bafybeib5e4rylv4rfvy7afaoevomygulwp7oxgp4rzcjexcgnrbw34cgfm/"],{ after: [stableToken] });
 
 

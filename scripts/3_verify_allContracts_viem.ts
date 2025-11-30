@@ -1,6 +1,6 @@
 /*
  * 批量验证所有合约的脚本
- * 运行：npx tsx scripts/3_verify_allContracts_viem_Inde.ts
+ * 运行：npx tsx scripts/3_verify_allContracts_viem.ts
  * 通常情况下，我们会为每个合约单独运行 hardhat verify 命令：
  * npx hardhat verify --network <network> <contract_address> --contract <contract_source> [constructor_arguments]
  * 但是为了方便起见，这里我们编写一个脚本来自动化这个过程。
@@ -57,11 +57,14 @@ const contracts: { name: string; source: string; address: string }[] = [
   { name: "USDCMock", source: "contracts/mocks/USDCMock.sol:USDCMock", address: deployed["tokenModules#USDCMock"] },
   { name: "StableToken", source: "contracts/tokens/StableToken.sol:StableToken", address: deployed["tokenModules#StableToken"] },
   { name: "MultiLeverageToken", source: "contracts/tokens/MultiLeverageToken.sol:MultiLeverageToken", address: deployed["tokenModules#MultiLeverageToken"] },
-  { name: "InterestManager", source: "contracts/InterestManager.sol:InterestManager", address: deployed["toolModules#InterestManager"] },
-  { name: "LTCPriceOracle", source: "contracts/oracles/LTCPriceOracle.sol:LTCPriceOracle", address: deployed["toolModules#LTCPriceOracle"] },
-  { name: "CustodianFixed", source: "contracts/CustodianFixed.sol:CustodianFixed", address: deployed["toolModules#CustodianFixed"] },
+  { name: "InterestManager", source: "contracts/InterestManager.sol:InterestManager", address: deployed["coreModules#InterestManager"] },
+  { name: "LTCPriceOracle", source: "contracts/oracles/LTCPriceOracle.sol:LTCPriceOracle", address: deployed["coreModules#LTCPriceOracle"] },
+  { name: "CustodianFixed", source: "contracts/CustodianFixed.sol:CustodianFixed", address: deployed["coreModules#CustodianFixed"] },
+  { name: "LinearDecrease", source: "contracts/auctions/abaci.sol:LinearDecrease", address: deployed["coreModules#LinearDecrease"] },
+  { name: "AuctionManager", source: "contracts/auctions/AuctionManager.sol:AuctionManager", address: deployed["coreModules#AuctionManager"] },
+  { name: "LiquidationManager", source: "contracts/auctions/LiquidationManager.sol:LiquidationManager", address: deployed["coreModules#LiquidationManager"] },
   { name: "AMMLiquidity", source: "contracts/AMMLiquidity.sol:AMMLiquidity", address: deployed["ammModules#AMMLiquidity"] },
-  { name: "AMMSwap", source: "contracts/AMMSwap.sol:AMMSwap", address: deployed["ammModules#AMMSwap"] }
+  { name: "AMMSwap", source: "contracts/AMMSwap.sol:AMMSwap", address: deployed["ammModules#AMMSwap"] },
 ];
 
 const network = "sepolia"; // 可根据需要修改
@@ -91,20 +94,29 @@ const commands: string[] = [
   `npx hardhat verify --network ${network} ${deployed[`tokenModules#${contracts[2].name}`]} --contract ${contracts[2].source} `,
   `npx hardhat verify --network ${network} ${deployed[`tokenModules#${contracts[3].name}`]} --contract ${contracts[3].source} ` + 
     `"ipfs://bafybeib5e4rylv4rfvy7afaoevomygulwp7oxgp4rzcjexcgnrbw34cgfm/"`,
-  `npx hardhat verify --network ${network} ${deployed[`toolModules#${contracts[4].name}`]} --contract ${contracts[4].source} ` +
+  `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[4].name}`]} --contract ${contracts[4].source} ` +
   `${contracts[0].address}` + ` 300`,
-  `npx hardhat verify --network ${network} ${deployed[`toolModules#${contracts[5].name}`]} --contract ${contracts[5].source} ` +
+  `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[5].name}`]} --contract ${contracts[5].source} ` +
   `--constructor-args-path ./temp_args.cjs`,
-  `npx hardhat verify --network ${network} ${deployed[`toolModules#${contracts[6].name}`]} --contract ${contracts[6].source} ` + 
+  `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[6].name}`]} --contract ${contracts[6].source} ` + 
   ` ${contracts[0].address}` +
   ` ${contracts[2].address}` +
   ` ${contracts[3].address}`,
-  `npx hardhat verify --network ${network} ${deployed[`ammModules#${contracts[7].name}`]} --contract ${contracts[7].source}  ` + 
+    `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[7].name}`]} --contract ${contracts[7].source} ` +
+    ` "3600"` +
+    ` ${contracts[8].address}`,
+    `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[8].name}`]} --contract ${contracts[8].source} ` +
+    ` ${contracts[2].address}` +
+    ` ${contracts[6].address}`,
+    `npx hardhat verify --network ${network} ${deployed[`coreModules#${contracts[9].name}`]} --contract ${contracts[9].source} ` +
+    ` ${contracts[3].address}` +
+    ` ${contracts[6].address}`,  
+  `npx hardhat verify --network ${network} ${deployed[`ammModules#${contracts[10].name}`]} --contract ${contracts[10].source}  ` + 
     ` ${contracts[2].address}` +
     ` ${contracts[1].address}` +
     ` "Stable-USDC LP"` +
     ` "SLP"`,
-  `npx hardhat verify --network ${network} ${deployed[`ammModules#${contracts[8].name}`]} --contract ${contracts[8].source} ` +
+  `npx hardhat verify --network ${network} ${deployed[`ammModules#${contracts[11].name}`]} --contract ${contracts[11].source} ` +
     ` ${contracts[0].address}` +
     ` ${contracts[1].address}` +
     ` ${contracts[2].address}` +
@@ -112,7 +124,7 @@ const commands: string[] = [
     ` "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b"` +
     ` "0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3"` +
     ` "0xd1CFdAb73eF0345F437a9c33acF179BB55633094"` +
-    ` "3000"`,
+    ` "3000"`
 ];
 
 async function main(): Promise<void> {
@@ -128,7 +140,7 @@ async function main(): Promise<void> {
   ];
   fs.writeFileSync('./temp_args.cjs', `module.exports = ${JSON.stringify(ltcArgs, null, 2)};`);
 
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 12; i++) {
     const contract = contracts[i];
     const command = commands[i];
     let deploymentKey;
@@ -137,9 +149,9 @@ async function main(): Promise<void> {
       deploymentKey = `tokenModules#${contract.name}`;
 
     }
-    else if(i < 7)
+    else if(i < 10)
     {
-      deploymentKey = `toolModules#${contract.name}`;
+      deploymentKey = `coreModules#${contract.name}`;
 
     }
      else {

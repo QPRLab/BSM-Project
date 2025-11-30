@@ -18,6 +18,7 @@
 - Deployment 
 - verification
 - Frontend
+- Website
 
 ---
 
@@ -297,3 +298,22 @@ This starts the Vite dev server (hot reload). By default Vite prints the local U
 - `frontend/src/abi/` — contract ABI files generated from the Hardhat compilation/artifacts.
 
 
+## **Website**
+We have deployed the entire smart contract project to the Ethereum Sepolia test network, and the project’s frontend has been deployed on Alibaba Cloud.
+- The specific deployed contract addresses are:
+``` pwsh 
+  "WLTCMock": "0x75B8CDe44E33135E6A08a59A23fC1e244A762501",
+  "USDCMock": "0x790fB0d2b3EDd1962A58d8F6095F3508c017E742",
+  "StableToken": "0x90CB2dac5A4c16C5bee95e27685f79F1AE61a2C6",
+  "MultiLeverageToken": "0xC6f471E3090772D330840d22afef853035BB3e57",
+  "InterestManager": "0x66773Ec1AdC675d8F67eBbc3Ed9Be748eFfEE253",
+  "LTCPriceOracle": "0x40747091177138BFe9Fc0ec14EFdF58b54E334be",
+  "CustodianFixed": "0x08dFeC48586774EeBEb5aeFeEf5E5047B0c6e966",
+  "AuctionManager": "0xd76041362F06f9D55F8C7fabb17dA1d5C077e746",
+  "LiquidationManager": "0x6376642f74033d0be2Ab398f0dc813473A0c696B",
+  "LinearDecrease": "0xb2f52ed6cd5559eC37aEAe2b4D05924A32EaEFB4",
+  "AMMLiquidity": "0x6B6D87154b8B42535697B4F60AFE939dBd4Ef467",
+  "AMMSwap": "0x1954D5043E9572B8b267D82C73a7c49d1bF06852"
+```
+- The Ali Cloud deployment website address is: http://47.115.61.38:81/BSM/.
+If you are interested in the project and would like to test our website’s functionality, please contact gelei1988@gmail.com. We will provide you with test tokens WLTC and USDC.

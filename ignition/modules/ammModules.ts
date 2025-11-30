@@ -36,7 +36,7 @@ export default buildModule("ammModules", (m) => {
   // ================= DEX 配置（Sepolia Testnet）=================
   const dexRouter = "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b"; // ✅ UniversalRouter (Sepolia)
   const quoter = "0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3"; // ✅ QuoterV2 (Sepolia)
-  const usdcUnderlyingPool = "0xCa250B562Beb3Be4fC75e79826390F9f14c622d0"; // ✅ USDC/WLTC Pool (您创建的池子)
+  const usdcUnderlyingPool = "0xCa250B562Beb3Be4fC75e79826390F9f14c622d0"; // ✅ WLTC/USDC Pool (您创建的池子)
   const poolFee = 3000; // 0.3% (uint24)
   
   // ================= AMM LP Token 配置 =================
