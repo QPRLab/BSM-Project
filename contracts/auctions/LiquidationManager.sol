@@ -253,8 +253,13 @@ contract LiquidationManager is AccessControl, ReentrancyGuard {
         userLiquidationStatus[user][tokenId].balance =0 ;
 
         // 创建荷兰式拍卖
-        auctionId = auction.startAuction(valueToBeBurned, globalConfig.penalty, user, tokenId, underlyingValueToUser, kpr);
-        userLiquidationStatus[user][tokenId].auctionId = auctionId;
+        auctionId = auction.startAuction(valueToBeBurned,  wmul(globalConfig.penalty, balance), user, tokenId, underlyingValueToUser, kpr);
+
+        // 记录auctionID
+        userLiquidationStatus[user][tokenId].auctionId =auctionId ;        
+
+
+
         return auctionId;
     }
 
