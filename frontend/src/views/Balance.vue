@@ -3,13 +3,13 @@
   <div class="balance-page">
     <header class="page-header">
       <div>
-        <h2>钱包余额</h2>
-        <p class="muted">查看并管理您的 WLTC / S / USDC 余额</p>
+        <h2>Wallet Balances</h2>
+        <p class="muted">View and manage your WLTC / S / USDC balances</p>
       </div>
       <div>
         <button class="btn" @click="toggleWallet" :disabled="loading">
-          <span v-if="loading">处理中...</span>
-          <span v-else>{{ account ? '断开连接' : '连接钱包' }}</span>
+          <span v-if="loading">Processing...</span>
+          <span v-else>{{ account ? 'Disconnect' : 'Connect Wallet' }}</span>
         </button>
       </div>
     </header>
@@ -33,7 +33,7 @@
       </section>
     </div>
 
-    <div v-else class="empty muted">未连接钱包 — 请点击右上方连接</div>
+    <div v-else class="empty muted">Wallet not connected — click top-right to connect</div>
 
     <div v-if="error" class="error">{{ error }}</div>
   </div>
@@ -81,7 +81,7 @@ async function connectWallet() {
     wallet.setBalances({ S, L, USDC, WLTC })
     wallet.setError('')
   } catch (e: any) {
-    wallet.setError(e.message || '连接失败')
+    wallet.setError(e.message || 'Connection failed')
   } finally {
     wallet.setLoading(false)
   }
@@ -89,7 +89,7 @@ async function connectWallet() {
 
 function disconnectWallet() {
   wallet.reset()
-  wallet.setError('已斷開前端連接。如需真正斷開，請在錢包（如 MetaMask）中手動移除本網站連接。')
+  wallet.setError('Frontend connection cleared. To fully disconnect, remove this site from your wallet (e.g., MetaMask)')
 }
 
 function toggleWallet() {

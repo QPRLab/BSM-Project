@@ -332,7 +332,7 @@ const selectRemovePercentage = (percentage: number) => {
 // 执行添加流动性
 const executeAddLiquidity = async () => {
   if (!wallet.account || !wallet.walletClient) {
-    errorMsg.value = '请先连接钱包'
+    errorMsg.value = 'Please connect wallet first'
     return
   }
 

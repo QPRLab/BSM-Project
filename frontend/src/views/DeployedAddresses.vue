@@ -1,6 +1,6 @@
 <template>
   <div class="addresses-page">
-    <h2>部署地址</h2>
+    <h2>Deployed Addresses</h2>
 
     <div class="cards">
       <div v-for="item in uniqueEntries" :key="item.addr" class="card">
@@ -9,8 +9,8 @@
           <div class="addr">{{ item.addr }}</div>
         </div>
         <div class="card-right">
-          <button class="btn" @click="openEtherscan(item.addr)">打开 Etherscan</button>
-          <button class="btn ghost" @click="copyAddress(item.addr)">{{ copied === item.addr ? '已复制' : '复制' }}</button>
+          <button class="btn" @click="openEtherscan(item.addr)">Open Etherscan</button>
+          <button class="btn ghost" @click="copyAddress(item.addr)">{{ copied === item.addr ? 'Copied' : 'Copy' }}</button>
         </div>
       </div>
     </div>

@@ -1,9 +1,9 @@
 <template>
   <div class="oracle-page">
     <header class="page-header">
-      <h2>预言机</h2>
+      <h2>Oracle</h2>
       <div class="header-actions">
-        <button class="icon-btn" @click="loadStatus" :disabled="loading" aria-label="刷新">
+        <button class="icon-btn" @click="loadStatus" :disabled="loading" aria-label="Refresh">
           <span v-if="!loading">⟳</span>
           <span v-else>⏳</span>
         </button>
@@ -14,7 +14,7 @@
       <!-- 获取价格 卡片 -->
       <section class="card" :class="{ 'card-valid': isValid === true, 'card-invalid': isValid === false }">
         <div class="card-head">
-          <h3>获取价格</h3>
+          <h3>Get Price</h3>
         </div>
         <div class="card-body">
           <div class="price-row">
@@ -24,9 +24,9 @@
           <div class="meta">Last update: <span class="mono">{{ lastUpdateDisplay }}</span></div>
         </div>
         <div class="card-foot">
-          <button class="btn primary" @click="loadStatus" :disabled="loading">刷新价格</button>
+          <button class="btn primary" @click="loadStatus" :disabled="loading">Refresh Price</button>
           <div class="status-inline">
-            <span v-if="loading" class="muted">加载中…</span>
+            <span v-if="loading" class="muted">Loading…</span>
             <span v-if="error" class="error">{{ error }}</span>
           </div>
         </div>
@@ -35,16 +35,16 @@
       <!-- 更新价格 卡片 -->
       <section class="card">
         <div class="card-head">
-          <h3>更新价格</h3>
+          <h3>Update Price</h3>
         </div>
         <div class="card-body">
           <label class="input-row">
-            <input v-model="newPrice" placeholder="例如 75.50" />
+            <input v-model="newPrice" placeholder="e.g. 75.50" />
           </label>
-          <div class="note muted">输入美元价格，将以 18 位精度提交到链上</div>
+          <div class="note muted">Enter USD price; it will be submitted with 18 decimals</div>
         </div>
         <div class="card-foot">
-          <button class="btn primary" @click="submitUpdate" :disabled="writing || !newPrice">更新价格</button>
+          <button class="btn primary" @click="submitUpdate" :disabled="writing || !newPrice">Update Price</button>
         </div>
       </section>
     </div>

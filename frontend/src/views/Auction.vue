@@ -26,7 +26,6 @@
             <th>Starting Price</th>
             <th>Current Price</th>
             <th>NeedToReset</th>
-            <th>IsUnderLiquidation</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -40,16 +39,9 @@
             <td>{{ formatNumber(a.startingPriceHuman) }}</td>
             <td>{{ formatNumber(a.currentPriceHuman) }}</td>
             <td>{{ a.needsReset ? 'Yes' : 'No' }}</td>
-            <td>{{ a.isUnderLiquidation ? 'Yes' : 'No' }}</td>
             <td>
-              <div v-if="!a.isUnderLiquidation">
-                <button class="action-btn" @click="handleWithdraw(a)" :disabled="!(connectedAccount && connectedAccount.toLowerCase() === a.originalOwner.toLowerCase())">Withdraw</button>
-                <span v-if="!(connectedAccount && connectedAccount.toLowerCase() === a.originalOwner.toLowerCase())">-</span>
-              </div>
-              <div v-else>
                 <button class="action-btn" v-if="a.needsReset" @click="handleReset(a)">Reset</button>
                 <button class="action-btn" v-else @click="handleBid(a)">Bid</button>
-              </div>
             </td>
           </tr>
         </tbody>
@@ -61,38 +53,7 @@
     
     <hr style="margin:1.5rem 0" />
 
-    <!-- Withdraw Status block (for connected wallet) -->
-    <div class="withdraw-section">
-      <h2>Withdraw Status</h2>
-      <div v-if="withdrawError" class="error">{{ withdrawError }}</div>
-      <div v-else>
-        <table class="param-table" v-if="withdrawRows.length > 0">
-          <thead>
-            <tr>
-              <th>Address</th>
-              <th>Auction ID</th>
-              <th>Token ID</th>
-              <th>StableNums</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in withdrawRows" :key="'withdraw-'+r.tokenId">
-              <td>{{ formatAddress(r.address) }}</td>
-              <td>{{ r.auctionId }}</td>
-              <td>{{ r.tokenId }}</td>
-              <td>{{ formatNumber(r.stableNumsHuman) }}</td>
-              <td>
-                <button class="action-btn" @click="handleWithdraw(r)" :disabled="!(connectedAccount && connectedAccount.toLowerCase() === r.address.toLowerCase())">Withdraw</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-else>
-          <p>No withdrawable tokens for the connected account.</p>
-        </div>
-      </div>
-    </div>
+
   </div>
 </template>
 
@@ -123,18 +84,13 @@ const totalAuctionsCount = ref<number | null>(null)
 const activeAuctionsCount = ref<number | null>(null)
 const auctionsRows = ref<Array<any>>([])
 const connectedAccount = ref<string | null>(null)
-const withdrawRows = ref<Array<any>>([])
-const withdrawError = ref<string | null>(null)
+
 
 async function loadConnectedAccount() {
   try {
     if (typeof (window as any).ethereum !== 'undefined') {
       const accs = await (window as any).ethereum.request({ method: 'eth_accounts' }) as string[]
       connectedAccount.value = (accs && accs.length > 0) ? String(accs[0]) : null
-      if (connectedAccount.value) {
-        // refresh withdraw info for this account
-        try { await refreshWithdrawStatus() } catch (_) {}
-      }
     }
   } catch (e) {
     connectedAccount.value = null
@@ -179,36 +135,24 @@ async function refreshAll() {
       try {
         const id = BigInt(i)
         const a: any = await (auc as any).read.auctions?.([id])
+        const b: any = await (auc as any).read.getAuctionStatus?.([id])
         if (!a) continue
+        if (!b) continue
         // struct Auction: (arrayIndex, underlyingAmount, originalOwner, tokenId, startTime, startingPrice, currentPrice, totalPayment)
         const underlyingAmount = a[1] as bigint
         const originalOwner = a[2] as string
         const tokenId = a[3] as bigint
         const startTime = a[4] as bigint
         const startingPrice = a[5] as bigint
-        const currentPrice = a[6] as bigint
         const totalPayment = a[7] as bigint
-        const isActive: boolean = Boolean((await (auc as any).read.auctionIsActive?.([id])) ?? false)
 
-            // only include active auctions in the displayed table
-            if (!isActive) continue
+        const needsReset = b[0] as boolean
+        const currentPrice = b[1] as bigint
+        
 
-            // check if auction needs reset
-            let needsReset = false
-            try {
-              const status: any = await (auc as any).read.getAuctionStatus?.([id])
-              if (status) {
-                needsReset = Boolean(status[0])
-              }
-            } catch (e) {
-              // getAuctionStatus may revert for inactive auctions; we already filtered active ones, but guard anyway
-              console.warn('getAuctionStatus failed for', i, e)
-            }
-
-            // attempt to read liquidation status for (originalOwner, tokenId)
+        // attempt to read liquidation status for (originalOwner, tokenId)
         let liqBalanceHuman: string | undefined = undefined
         let isLiquidated = false
-        let isUnderLiquidation = false
         let isFreezed = false
         if (liq) {
           try {
@@ -216,8 +160,6 @@ async function refreshAll() {
             if (liqStatus) {
               const bal = liqStatus[0] as bigint
               liqBalanceHuman = formatEther(bal)
-              isLiquidated = Boolean(liqStatus[3])
-              isUnderLiquidation = Boolean(liqStatus[4])
               isFreezed = Boolean(liqStatus[5])
             }
           } catch (e) {
@@ -232,14 +174,12 @@ async function refreshAll() {
           tokenId: tokenId?.toString() ?? '0',
           liqBalanceHuman,
           isLiquidated,
-          isUnderLiquidation,
           isFreezed,
           needsReset,
           startTimeHuman: startTime && Number(startTime) > 0 ? new Date(Number(startTime) * 1000).toLocaleString() : '-',
           startingPriceHuman: formatEther(startingPrice),
           currentPriceHuman: formatEther(currentPrice),
-          totalPaymentHuman: formatEther(totalPayment),
-          isActive
+          totalPaymentHuman: formatEther(totalPayment)
         })
       } catch (e) {
         // continue on error per-auction
@@ -253,80 +193,10 @@ async function refreshAll() {
     error.value = e?.message ?? String(e)
   } finally {
     loading.value = false
-    // If a wallet is connected, refresh the withdraw status as well.
-    // Run in background so the main refresh stays responsive and doesn't wait on token enumeration.
-    try {
-      if (connectedAccount.value) {
-        // don't await to avoid blocking UI; handle errors silently
-        refreshWithdrawStatus().catch((err: any) => console.warn('refreshWithdrawStatus failed', err))
-      }
-    } catch (_) {}
   }
 }
 
-// Refresh withdraw status for connectedAccount: list tokenIds where isFreezed==true && isUnderLiquidation==false
-async function refreshWithdrawStatus() {
-  withdrawRows.value = []
-  withdrawError.value = null
-  try {
-    if (!connectedAccount.value) return
-    // resolve custodian and liquidation manager
-    const custodian = await getReadonlyContract('coreModules#CustodianFixed', 'CustodianFixed')
-    const liqAddr: any = await (custodian as any).read.liquidationManager?.()
-    if (!liqAddr) return
-    let liq = await getReadonlyContract('coreModules#LiquidationManager', 'LiquidationManager')
 
-    // get leverage token address from liquidation manager
-    let leverageAddr: string | null = null
-    try {
-      leverageAddr = await (liq as any).read.leverageToken?.()
-    } catch (e) {
-      console.warn('Could not read leverageToken address from liquidation manager', e)
-    }
-    if (!leverageAddr) return
-
-    // minimal ABI for getNextTokenId
-    const multiAbi = [
-      { "type": "function", "name": "getNextTokenId", "inputs": [], "outputs": [{ "type": "uint256" }], "stateMutability": "view" },
-      { "type": "function", "name": "tokenExists", "inputs": [{"name":"tokenId","type":"uint256"}], "outputs": [{"type":"bool"}], "stateMutability": "view" }
-    ]
-    const multi = getContract({ address: leverageAddr as `0x${string}`, abi: multiAbi as any, client: publicClient })
-    const nextIdRaw: any = await (multi as any).read.getNextTokenId?.()
-    if (!nextIdRaw) return
-    const nextId = Number(nextIdRaw)
-
-    // iterate token ids 1 .. nextId-1
-    const maxIter = nextId > 1000 ? 1000 : nextId // safety cap to avoid long loops; adjust if needed
-    for (let t = 1; t < nextId && t <= maxIter; t++) {
-      try {
-        // optional: check tokenExists
-        const exists = await (multi as any).read.tokenExists?.([BigInt(t)])
-        if (exists === false) continue
-
-        const status: any = await (liq as any).read.userLiquidationStatus?.([connectedAccount.value, BigInt(t)])
-        if (!status) continue
-        const isFreezed = Boolean(status[5])
-        const isUnderLiquidation = Boolean(status[4])
-        if (isFreezed && !isUnderLiquidation) {
-          const stableNums = status[6] as bigint
-          const auctionId = status[7] as bigint
-          withdrawRows.value.push({
-            address: connectedAccount.value,
-            auctionId: auctionId ? auctionId.toString() : '0',
-            tokenId: String(t),
-            stableNumsRaw: stableNums?.toString?.() ?? '0',
-            stableNumsHuman: stableNums ? formatEther(stableNums) : undefined
-          })
-        }
-      } catch (e) {
-        console.warn('Failed reading userLiquidationStatus for token', t, e)
-        continue
-      }
-    }
-  } catch (e:any) {
-    withdrawError.value = e?.message ?? String(e)
-  }
-}
 
 // helper: ensure wallet client and account
 async function ensureWalletClient() {
@@ -340,29 +210,6 @@ async function ensureWalletClient() {
   return { caller, walletClient }
 }
 
-// Withdraw: only original owner should see and click this
-async function handleWithdraw(row: any) {
-  try {
-    const { caller, walletClient } = await ensureWalletClient()
-    const ownerAddr = (row.originalOwner ?? row.address ?? '').toString()
-    if (!ownerAddr) throw new Error('Row missing owner address')
-    if (caller.toLowerCase() !== ownerAddr.toLowerCase()) {
-      alert('Only the original owner can withdraw')
-      return
-    }
-    // resolve liquidation manager for writes
-    let liq= await getWalletContract('coreModules#LiquidationManager', walletClient, 'LiquidationManager')
-
-    const tokenIdBig = BigInt(row.tokenId)
-    const tx = await (liq as any).write.withdrawStable([caller, tokenIdBig])
-    await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` })
-    await refreshAll()
-    await refreshWithdrawStatus()
-  } catch (e:any) {
-    console.error('withdraw failed', e)
-    alert('Withdraw failed: ' + (e?.message ?? String(e)))
-  }
-}
 
 // Reset auction (keeper action) - calls auctionManager.resetAuction(auctionId, triggerer)
 async function handleReset(row: any) {
@@ -423,8 +270,6 @@ async function handleBid(row: any) {
 
 // initial load
 refreshAll()
-// also refresh withdraw section (if wallet connected)
-refreshWithdrawStatus()
 </script>
 
 <style scoped>

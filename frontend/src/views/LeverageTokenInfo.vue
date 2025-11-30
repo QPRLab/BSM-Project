@@ -19,7 +19,8 @@
               <th>Leverage</th>
               <th>Mint Price</th>
               <th>Accrued Interest</th>
-              <th>Net NAV</th>
+              <th>NAV</th>
+              <th>NAV(EX-Dividend)</th>
               <th>Risk</th>
             </tr>
           </thead>
@@ -31,7 +32,8 @@
               <td><span :class="['lev', row.leverageClass]">{{ row.leverageLabel }}</span></td>
               <td>{{ formatNumber(row.mintPriceHuman) }}</td>
               <td>{{ formatNumber(row.accruedHuman) }}</td>
-              <td>{{ formatNumber(row.netNavHuman) }}</td>
+              <td>{{ formatNumber(row.totalNavHuman, 4) }}</td>
+              <td>{{ formatNumber(row.netNavHuman, 4) }}</td>
               <td>
                 <span v-if="row.netNavNumber === null">-</span>
                 <span v-else-if="row.netNavNumber > 1" class="risk safe">Safe</span>
@@ -93,10 +95,13 @@ async function fetchForAddress(addr: string) {
 
       // attempt to fetch net NAV via getSingleLeverageTokenNavV2
       let netNav: bigint | null = null
+      let totalNav: bigint | null = null
       try {
         const navTuple: any = await (custodian as any).read.getSingleLeverageTokenNavV2?.([addr, tokenId])
         if (navTuple) {
           netNav = navTuple[2] as bigint
+          totalNav = navTuple[1] as bigint
+          console.log('nav', netNav, totalNav)
         }
       } catch (e) {
         netNav = null
@@ -104,6 +109,8 @@ async function fetchForAddress(addr: string) {
 
       const netNavHuman = netNav ? formatEther(netNav) : undefined
       const netNavNumber = netNav ? Number(netNavHuman) : null
+      const totalNavHuman = totalNav ? formatEther(totalNav) : undefined
+      const totalNavNumber = totalNav ? Number(totalNavHuman) : null
 
       // safe defaults to avoid TS errors
       const safeBalance = balance ?? 0n
@@ -137,6 +144,8 @@ async function fetchForAddress(addr: string) {
         netNavRaw: netNav ? netNav.toString() : undefined,
         netNavHuman,
         netNavNumber,
+        totalNavHuman,
+        totalNavNumber,
         leverageLabel: levLabel,
         leverageClass: levClass
       })
@@ -242,11 +251,12 @@ async function callBark(userAddr: string, tokenIdStr: string) {
 // auto refresh on mount
 refreshAll()
 
-function formatNumber(v?: string) {
+
+function formatNumber(v?: string, decimals = 2) {
   if (v === undefined || v === null) return '-'
   const n = Number(v)
   if (isNaN(n)) return '-'
-  return n.toFixed(2)
+  return n.toFixed(decimals)
 }
 
 function formatAddress(a?: string) {

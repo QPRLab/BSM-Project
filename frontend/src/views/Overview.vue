@@ -2,42 +2,42 @@
   <div class="page-wrap">
     <header class="page-header">
       <div class="title-area">
-        <h1 class="page-title">项目概览</h1>
-        <p class="lead muted">质押 WLTC，发行稳定币 S 与杠杆币 L — 稳定币净值 1，杠杆币获取底层收益。</p>
+        <h1 class="page-title">Project Overview</h1>
+        <p class="lead muted">Stake WLTC to mint Stable token S and Leverage token L — S is pegged to 1, L accrues underlying returns.</p>
       </div>
       <div>
-        <button class="icon-btn" @click="refresh" :disabled="loading">⟳ 刷新</button>
+        <button class="icon-btn" @click="refresh" :disabled="loading">⟳ Refresh</button>
       </div>
     </header>
 
     <main class="container">
       <section class="card">
         <div class="card-body">
-          <p>本项目允许用户基于标的价格 P0 与不同杠杆率（如 1:1 / 1:4 / 1:8）铸造 S 与 L 代币。S 保持锚定 1，L 分配收益与风险。</p>
+          <p>This project allows users to mint S and L tokens based on the underlying price P0 and different leverage ratios (e.g. 1:1 / 1:4 / 1:8). S remains pegged to 1; L shares returns and risks.</p>
         </div>
       </section>
 
       <section class="card stats-card">
         <div class="card-head">
-          <h3>项目资产信息</h3>
+          <h3>Project Asset Info</h3>
         </div>
         <div class="card-body stats">
           <div class="stat">
-            <div class="label">质押 WLTC</div>
+            <div class="label">Staked WLTC</div>
             <div class="value">{{ collateral }}</div>
           </div>
           <div class="stat">
-            <div class="label">稳定币 S</div>
+            <div class="label">Stable Token S</div>
             <div class="value">{{ sToken }}</div>
           </div>
           <div class="stat">
-            <div class="label">杠杆币 L</div>
+            <div class="label">Leverage Token L</div>
             <div class="value">{{ lToken }}</div>
           </div>
         </div>
         <div class="card-foot">
           <div class="status-inline">
-            <span v-if="loading" class="muted">加载中…</span>
+            <span v-if="loading" class="muted">Loading…</span>
             <span v-if="error" class="error">{{ error }}</span>
           </div>
         </div>
@@ -72,7 +72,7 @@ async function loadOverview() {
     lToken.value = Number(formatUnits(totalLeverageTokenSupply ?? 0n, 18)).toFixed(4)
     collateral.value = Number(formatUnits(totalUnderlyingLocked ?? 0n, 18)).toFixed(4)
   } catch (e: any) {
-    error.value = e?.message ?? '查询失败'
+    error.value = e?.message ?? 'Query failed'
   } finally {
     loading.value = false
   }

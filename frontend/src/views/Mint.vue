@@ -4,7 +4,7 @@
       <header class="card-header">
         <div>
           <h2 class="title">Mint WLTC</h2>
-          <p class="subtitle">快速铸造杠杆仓位 — 安全审慎使用</p>
+          <p class="subtitle">Quickly mint leverage positions — use with caution</p>
         </div>
         <div class="price-badge">Price: <strong>{{ selectedPrice ?? '-' }}</strong></div>
       </header>
@@ -17,17 +17,17 @@
               <input class="input" v-model="wltcAmount" placeholder="e.g. 1.5" />
               <button type="button" class="small-btn" @click="refreshBalance">Refresh Balance</button>
             </div>
-            <small class="hint">输入你要用于铸币的 WLTC 数量 • Total WLTC Balance: <strong>{{ wltcBalance ?? '-' }}</strong></small>
+            <small class="hint">Enter the amount of WLTC to use for minting • Total WLTC Balance: <strong>{{ wltcBalance ?? '-' }}</strong></small>
           </div>
 
           <div class="field">
             <label class="label">Leverage</label>
             <select class="select" v-model.number="leverage">
-              <option :value="2">Aggressive (高风险)</option>
-              <option :value="1">Moderate (温和)</option>
-              <option :value="0">Conservative (保守)</option>
+              <option :value="2">Aggressive (High risk)</option>
+              <option :value="1">Moderate (Medium risk)</option>
+              <option :value="0">Conservative (Low risk)</option>
             </select>
-            <small class="hint">选择杠杆等级（会影响 L/S 比例）</small>
+            <small class="hint">Choose leverage level (affects L/S ratio)</small>
           </div>
 
           <div class="field full">
@@ -39,7 +39,7 @@
               <label class="chip"><input type="radio" value="custom" v-model="priceMode" /> Custom</label>
               <input v-if="priceMode==='custom'" class="input small" v-model="customPrice" placeholder="e.g. 115.5" />
             </div>
-            <small class="hint">选择或输入铸币价格 (USD)</small>
+            <small class="hint">Select or enter mint price (USD)</small>
           </div>
         </div>
       </section>

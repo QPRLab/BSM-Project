@@ -23,31 +23,31 @@ function closeAmmDropdown() {
     <header class="topbar">
       <h2>BSM</h2>
       <nav class="nav">
-        <router-link to="/" exact>首页</router-link>
-        <router-link to="/Balance">余额查询</router-link>
-        <router-link to="/Mint">铸币</router-link>
-        <router-link to="/Burn">销毁</router-link>
+        <router-link to="/" exact>Home</router-link>
+        <router-link to="/Balance">Balances</router-link>
+        <router-link to="/Mint">Mint</router-link>
+        <router-link to="/Burn">Burn</router-link>
         <div class="nav-dropdown" @click.stop>
-          <span class="nav-parent" @click="toggleAmmDropdown">AMM池 ▾</span>
+          <span class="nav-parent" @click="toggleAmmDropdown">AMM Pool ▾</span>
           <div class="nav-dropdown-content" :class="{ show: isAmmDropdownOpen }">
-            <router-link to="/Amm" @click="closeAmmDropdown">AMM池首页</router-link>
+            <router-link to="/Amm" @click="closeAmmDropdown">AMM Home</router-link>
             <router-link to="/Amm/swap-stable" @click="closeAmmDropdown">Swap Stable</router-link>
             <router-link to="/Amm/swap-leverage" @click="closeAmmDropdown">Swap Leverage</router-link>
-            <router-link to="/Amm/liquidity" @click="closeAmmDropdown">Liquidity管理</router-link>
+            <router-link to="/Amm/liquidity" @click="closeAmmDropdown">Liquidity Management</router-link>
           </div>
         </div>
         
         
         <div class="nav-dropdown" @click.stop>
-          <span class="nav-parent" @click="toggleLiquidationDropdown">清算 ▾</span>
+          <span class="nav-parent" @click="toggleLiquidationDropdown">Liquidation ▾</span>
           <div class="nav-dropdown-content" :class="{ show: isLiquidationDropdownOpen }">
             <router-link to="/Liquidation/parameters" @click="closeAmmDropdown">Liquidation Parameters</router-link>
             <router-link to="/Liquidation/leverage-info" @click="closeAmmDropdown">Leverage Token Info</router-link>
             <router-link to="/Liquidation/auction" @click="closeAmmDropdown">Auction</router-link>
           </div>
         </div>
-        <router-link to="/Oracle">预言机</router-link>
-        <router-link to="/Addresses">部署地址</router-link>
+        <router-link to="/Oracle">Oracle</router-link>
+        <router-link to="/Addresses">Deployed Addresses</router-link>
       </nav>
     </header>
     <main class="main-content">

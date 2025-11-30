@@ -229,26 +229,71 @@ Read headers of each script for usage details and required environment variables
 
 ## Deployment 
 
+This project uses Hardhat + Hardhat-Ignition modules to deploy contracts. All deployment code lives under ignition/modules/* and each module exports a deployment “graph” that Ignition will execute in dependency order. Use the hardhat ignition deploy command to run one module or all modules against the sepolia network.
+
+During the testing process, we divided the deployment of the project’s contracts on Sepolia into three steps. The detailed deployment procedure is as follows:
+
+- Deploy token-related files：
+```pwsh
+npx hardhat ignition deploy ignition/modules/tokenModules.ts --network sepolia
+```
+
+- Deploy management and utility contracts (such as custodian, oracle, etc.)：
+```pwsh
+npx hardhat ignition deploy ignition/modules/toolModules.ts --network sepolia
+```
+
+- Deploy AMM pool-related contracts：
+```pwsh
+npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
+```
+
+After deployment is completed, Ignition will generate a deployments folder in the project’s ignition directory. Inside this folder:
+- The deployed_addresses.json file contains the deployed addresses of all contracts.
+- The artifacts folder includes the ABI files for each deployed contract
+
+
 ---
 
 ## verification
 
-- Use Hardhat ignition scripts (in `ignition/`) or the `scripts/` helpers to deploy modules.
-- Example (local/sepolia flow):
+The script 3_verify_allContracts_viem.ts automates running npx hardhat verify for the contracts you deployed with Ignition by reading ignition/deployments/.../deployed_addresses.json, composing per-contract verify commands (including constructor args when needed), and executing them sequentially.
 
-```pwsh
-npx hardhat ignition deploy ignition/modules/tokenModules.ts --network sepolia
-npx hardhat ignition deploy ignition/modules/coreModules.ts --network sepolia
-# then amm modules
-npx hardhat ignition deploy ignition/modules/ammModules.ts --network sepolia
+The script makes it easier than running many manual hardhat verify commands and helps handle constructor-args files and ordering consistently.
+
+``` pwsh
+npx tsx scripts/3_verify_allContracts_viem_Inde.ts
 ```
 
-- Verify contracts with `npx hardhat verify` or `scripts/3_verify_allContracts_viem.ts`.
 
 ---
 
-## Frontend
+## **Frontend**
 
-- Vue 3 + Vite project lives in `frontend/`.
-- Key helper: `frontend/src/utils/contracts.ts` centralizes ABI loading and read/write contract factories.
-- Build and run via Vite during development: `cd frontend && npm run dev`.
+- **Framework & Tooling:** Vue 3 (Composition API) + TypeScript + Vite. State management uses `pinia`. Wallet & RPC interactions use `viem`.
+- **Location:** The web app source is in `frontend/`. Built assets and dev server are managed by Vite.
+
+**How to run (development)**
+
+Open a PowerShell terminal and run:
+
+```pwsh
+cd frontend
+npm ci
+npm run dev
+```
+
+This starts the Vite dev server (hot reload). By default Vite prints the local URL (e.g. `http://localhost:5173`) — open it in your browser.
+
+**Key frontend modules & file locations**
+
+- `frontend/src/main.ts` — app entry, router and store registration.
+- `frontend/src/App.vue` — top-level layout and navigation.
+- `frontend/src/views/` — main page views (pages) used by the app (examples: `Overview.vue`, `Oracle.vue`, `Balance.vue`, `Mint.vue`, `Burn.vue`, `AmmLiquidity.vue`, `Auction.vue`).
+- `frontend/src/components/` — shared UI components used across views.
+- `frontend/src/stores/` — Pinia stores (e.g. `wallet` store used to hold connected account and wallet client).
+- `frontend/src/utils/contracts.ts` — central helper that maps Ignition-deployed contract names to ABIs and creates read/write contract factory functions (used throughout the UI to get `public` and `wallet` contract instances).
+- `frontend/src/config/addresses.ts` — runtime addresses used by the frontend (populated from Ignition deployments or manually for local dev / Sepolia).
+- `frontend/src/abi/` — contract ABI files generated from the Hardhat compilation/artifacts.
+
+

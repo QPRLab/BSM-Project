@@ -18,7 +18,7 @@
       </table>
     </div>
 
-    <div v-else class="hint">组件已自动加载默认地址的参数；若未能加载请检查 RPC 或合约地址。</div>
+    <div v-else class="hint">Component has automatically loaded parameters for default addresses; if it failed, check RPC or contract addresses.</div>
 
     <div class="spacer" />
 

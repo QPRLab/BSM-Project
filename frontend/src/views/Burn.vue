@@ -4,7 +4,7 @@
       <header class="card-header">
         <div>
           <h2 class="title">Burn L Token</h2>
-          <p class="subtitle">销毁部分杠杆仓位以赎回底层资产（谨慎操作）</p>
+          <p class="subtitle">Burn part of leverage position to redeem underlying assets (use caution)</p>
         </div>
         <div class="price-badge">Custodian</div>
       </header>
@@ -12,33 +12,33 @@
       <section class="card-body">
         <div class="form-grid">
           <div class="field">
-            <label class="label">选择 Token ID</label>
+            <label class="label">Select Token ID</label>
             <select class="select" v-model="selectedTokenId">
-              <option disabled value="">-- 请选择 --</option>
+              <option disabled value="">-- Please select --</option>
               <option v-for="t in tokens" :key="t.tokenId" :value="t.tokenId">{{ t.tokenId }} — balance: {{ t.balanceHuman }}</option>
             </select>
-            <small class="hint">请选择您持有的杠杆 Token ID</small>
+            <small class="hint">Please select a Leverage Token ID you own</small>
           </div>
 
           <div class="field">
-            <label class="label">销毁比例</label>
+            <label class="label">Burn Percentage</label>
             <div class="price-row">
               <label class="chip" v-for="p in percents" :key="p"><input type="radio" :value="p" v-model.number="selectedPercent" /> {{ p }}%</label>
             </div>
-            <small class="hint">选择要销毁的 L 代币比例</small>
+            <small class="hint">Choose the percentage of L tokens to burn</small>
           </div>
 
           <div class="field full">
             <label class="label">Preview</label>
             <div class="preview">
-              <div v-if="previewLoading" class="muted">计算中…</div>
+              <div v-if="previewLoading" class="muted">Calculating…</div>
               <div v-else-if="previewError" class="error">{{ previewError }}</div>
               <div v-else-if="preview">
-                <div>将销毁 L 数量: <strong>{{ preview.lAmountBurned }}</strong></div>
-                <div>需要销毁 S 数量: <strong>{{ preview.sAmountNeeded }}</strong></div>
-                <div>可赎回底层: <strong>{{ preview.underlyingToUser }}</strong></div>
+                <div>L to be burned: <strong>{{ preview.lAmountBurned }}</strong></div>
+                <div>S required to burn: <strong>{{ preview.sAmountNeeded }}</strong></div>
+                <div>Underlying redeemable: <strong>{{ preview.underlyingToUser }}</strong></div>
               </div>
-              <div v-else class="muted">选择 Token ID 与比例以查看预览</div>
+              <div v-else class="muted">Select Token ID and percentage to view preview</div>
             </div>
           </div>
         </div>
@@ -106,12 +106,12 @@ async function loadUserTokens() {
     }
     tokens.value = rows
     // 如果当前选中的 tokenId 已经不存在或余额为 0，清除选择并更新预览提示
-    if (selectedTokenId.value) {
+        if (selectedTokenId.value) {
       const found = rows.find(r => r.tokenId === selectedTokenId.value)
       if (!found || found.balanceRaw === '0') {
         selectedTokenId.value = ''
         preview.value = null
-        previewError.value = '所选 Token 已无持仓，已取消选择'
+            previewError.value = 'Selected token has no balance, selection cleared'
       }
     }
   } catch (e:any) {
@@ -130,7 +130,7 @@ async function computePreview() {
     const priceTuple: any = await (custodian as any).read.getLatestPriceView?.()
     const price = priceTuple ? (priceTuple[0] ?? priceTuple.priceInWei ?? 0n) : 0n
     if (!price || price === 0n) {
-      previewError.value = '无法获取预言机价格'
+      previewError.value = 'Unable to fetch oracle price'
       return
     }
     const tokenIdBig = BigInt(selectedTokenId.value)
@@ -142,16 +142,16 @@ async function computePreview() {
       const singleInfo: any = await (custodian as any).read.getSingleLeverageTokenInfo?.([account, tokenIdBig])
       const totalLAmountInWei = BigInt(singleInfo?.[0] ?? 0n)
       // 如果链上余额为 0，说明 token 已被销毁或不再持有，清除选择并返回
-      if (totalLAmountInWei === 0n) {
+        if (totalLAmountInWei === 0n) {
         selectedTokenId.value = ''
         preview.value = null
-        previewError.value = '所选 Token 已无持仓，已取消选择'
+        previewError.value = 'Selected token has no balance, selection cleared'
         previewLoading.value = false
         return
       }
       const lAmountBurned = (totalLAmountInWei * percent) / 100n
       if (lAmountBurned === 0n) {
-        previewError.value = '销毁后 L 数量为 0。请选择更大的比例或余额更高的 Token。'
+        previewError.value = 'L amount after burn is 0. Choose a larger percentage or a token with higher balance.'
         previewLoading.value = false
         return
       }
@@ -196,8 +196,8 @@ async function doBurn() {
   writing.value = true
   try {
     const account = await getAccount()
-    if (!selectedTokenId.value) throw new Error('请选择 Token ID')
-    if (!selectedPercent.value) throw new Error('请选择销毁比例')
+    if (!selectedTokenId.value) throw new Error('Please select Token ID')
+    if (!selectedPercent.value) throw new Error('Please select burn percentage')
 
     // pre-check on-chain balance to avoid sending a tx that will revert with "Calculated burn amount is zero"
     try {
@@ -206,7 +206,7 @@ async function doBurn() {
       const totalLAmountInWei = BigInt(singleInfo?.[0] ?? 0n)
       const lAmountBurned = (totalLAmountInWei * BigInt(selectedPercent.value)) / 100n
       if (lAmountBurned === 0n) {
-        error.value = '销毁后 L 数量为 0。请选择更大的比例或余额更高的 Token。'
+        error.value = 'L amount after burn is 0. Choose a larger percentage or a token with higher balance.'
         writing.value = false
         return
       }
