@@ -49,15 +49,16 @@ const USDC_ADDRESS = deployedAddresses["tokenModules#USDCMock"];
 
 // 需要铸币的地址列表
 const mint_WLTCUSDC_Address = [
-  "0x4845d4db01b81A15559b8734D234e6202C556d32",
-  "0x6bCf5fbb6569921c508eeA15fF16b92426F99218",
-  "0x0f4d9b55A1bBD0aA8e9c55eA1442DCE69b1E226B",
-  "0xA4b399a194e2DD9b84357E92474D0c32e3359A74",
+  "0x32d45cd69e3a42ba50372aa20f15835f78d1afd3", //KOU
+  // "0x4845d4db01b81A15559b8734D234e6202C556d32", //GELEI
+  // "0x6bCf5fbb6569921c508eeA15fF16b92426F99218",
+  // "0x0f4d9b55A1bBD0aA8e9c55eA1442DCE69b1E226B",
+  // "0xA4b399a194e2DD9b84357E92474D0c32e3359A74",
 ];
 
 // 每个地址的铸币数量
-const WLTC_AMOUNT = 1000000n * 10n ** 18n; // 1,000,000 WLTC (18 decimals)
-const USDC_AMOUNT = 120000000n * 10n ** 6n; // 120,000,000 USDC (6 decimals)
+const WLTC_AMOUNT = 10000n * 10n ** 18n; // 10,000 WLTC (18 decimals)
+const USDC_AMOUNT = 1200000n * 10n ** 6n; // 1,200,000 USDC (6 decimals)
 
 async function main() {
   console.log('🚀 开始批量铸币脚本...');
