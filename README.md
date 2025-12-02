@@ -14,9 +14,9 @@
    - LiquidationManager.sol
    - AuctionManager.sol
 - Testing
-- Scripts
 - Deployment 
 - verification
+- Scripts
 - Frontend
 - Website
 
@@ -204,32 +204,12 @@ It enforces sane bounds and staleness checks, supports emergency mode with a fix
 For details, read the contracts in `contracts/` .
 
 ---
-
 ## Testing
-
 - Unit tests are in `test/` (Hardhat + viem style). Use `npx hardhat test` to run all tests.
 - Use `npx hardhat test test/LiquidationAuction.test.ts` to test the liquidation auction flow.
 
-
 ---
-## Scripts
-
-Scripts are in `scripts/` and include examples for minting mocks, interacting with the AMM, running auctions, and verifying contracts. Examples:
-
-- `scripts/1_mint_USDCWLTCtokens_viem.ts` — mint mock tokens for tests
-- `scripts/2_mint_SLtokens_viem.ts` — mint S and L tokens for basic scenarios
-- `scripts/3_verify_allContracts_viem.ts` — Etherscan verification helper
-- `scripts/4_interact_amm_viem.ts` — end-to-end AMM interaction example
-- `scripts/5_auction_viem.ts` — auction flow example
-
-Read headers of each script for usage details and required environment variables.
-
-
-
----
-
 ## Deployment 
-
 This project uses Hardhat + Hardhat-Ignition modules to deploy contracts. All deployment code lives under ignition/modules/* and each module exports a deployment “graph” that Ignition will execute in dependency order. Use the hardhat ignition deploy command to run one module or all modules against the sepolia network.
 
 During the testing process, we divided the deployment of the project’s contracts on Sepolia into three steps. The detailed deployment procedure is as follows:
@@ -253,11 +233,8 @@ After deployment is completed, Ignition will generate a deployments folder in th
 - The deployed_addresses.json file contains the deployed addresses of all contracts.
 - The artifacts folder includes the ABI files for each deployed contract
 
-
 ---
-
 ## verification
-
 The script 3_verify_allContracts_viem.ts automates running npx hardhat verify for the contracts you deployed with Ignition by reading ignition/deployments/.../deployed_addresses.json, composing per-contract verify commands (including constructor args when needed), and executing them sequentially.
 
 The script makes it easier than running many manual hardhat verify commands and helps handle constructor-args files and ordering consistently.
@@ -266,11 +243,20 @@ The script makes it easier than running many manual hardhat verify commands and 
 npx tsx scripts/3_verify_allContracts_viem_Inde.ts
 ```
 
+---
+## Scripts
+Scripts are in `scripts/` and include examples for minting mocks, interacting with the AMM, running auctions, and verifying contracts deployed on Sepolia. Examples:
+
+- `scripts/1_mint_USDCWLTCtokens_viem.ts` — mint mock tokens for tests(Only for Owner)
+- `scripts/2_mint_SLtokens_viem.ts` — mint S and L tokens for basic scenarios(For all users, if you already have WLTC)
+- `scripts/3_verify_allContracts_viem.ts` — Etherscan Sepolia verification helper
+- `scripts/4_interact_amm_viem.ts` — test the swap functionality of deployed AMM & DEX
+
+Read headers of each script for usage details and required environment variables.
+
 
 ---
-
 ## **Frontend**
-
 - **Framework & Tooling:** Vue 3 (Composition API) + TypeScript + Vite. State management uses `pinia`. Wallet & RPC interactions use `viem`.
 - **Location:** The web app source is in `frontend/`. Built assets and dev server are managed by Vite.
 

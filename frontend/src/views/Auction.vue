@@ -1,6 +1,6 @@
 <template>
   <div class="liquidation-page">
-    <h2>Auction List</h2>
+    <h2>Auction List(Only show Test Addresses)</h2>
 
     <div class="controls">
       <button class="refresh-btn" @click="refreshAll" :disabled="loading">Refresh</button>
@@ -21,8 +21,8 @@
             <th>Auction ID</th>
             <th>Original Owner</th>
             <th>Token ID</th>
-            <th>Underlying Amount</th>
-            <th>Balance</th>
+            <th>Initial Underlying Amount</th>
+            <th>Remaining Underlying Amount</th>
             <th>Starting Price</th>
             <th>Current Price</th>
             <th>NeedToReset</th>
@@ -35,7 +35,7 @@
             <td>{{ formatAddress(a.originalOwner) }}</td>
             <td>{{ a.tokenId }}</td>
             <td>{{ formatNumber(a.underlyingAmountHuman) }}</td>
-            <td>{{ a.liqBalanceHuman ?? '-' }}</td>
+            <td>{{ formatNumber(a.remainingUnderlyingAmountHuman) }}</td>
             <td>{{ formatNumber(a.startingPriceHuman) }}</td>
             <td>{{ formatNumber(a.currentPriceHuman) }}</td>
             <td>{{ a.needsReset ? 'Yes' : 'No' }}</td>
@@ -139,15 +139,26 @@ async function refreshAll() {
         if (!a) continue
         if (!b) continue
         // struct Auction: (arrayIndex, underlyingAmount, originalOwner, tokenId, startTime, startingPrice, currentPrice, totalPayment)
+        const valueToBeBurned = a[0] as bigint
         const underlyingAmount = a[1] as bigint
-        const originalOwner = a[2] as string
-        const tokenId = a[3] as bigint
-        const startTime = a[4] as bigint
-        const startingPrice = a[5] as bigint
-        const totalPayment = a[7] as bigint
-
+        const originalOwner = a[3] as string
+        const tokenId = a[4] as bigint
+        const startTime = a[5] as bigint
+        const startingPrice = a[6] as bigint
+        const totalPayment = a[8] as bigint
         const needsReset = b[0] as boolean
         const currentPrice = b[1] as bigint
+
+        //calculate the remaining underlying amount based on current price
+        const WAD = 10n**18n
+        let remainingUnderlyingAmount: bigint = 0n
+        if(currentPrice === 0n){
+          // skip finished auctions
+          continue
+        }
+        else{
+          remainingUnderlyingAmount = (valueToBeBurned * WAD) / currentPrice        
+        }
         
 
         // attempt to read liquidation status for (originalOwner, tokenId)
@@ -170,6 +181,7 @@ async function refreshAll() {
         auctionsRows.value.push({
           id: i,
           underlyingAmountHuman: formatEther(underlyingAmount),
+          remainingUnderlyingAmountHuman: formatEther(remainingUnderlyingAmount),
           originalOwner,
           tokenId: tokenId?.toString() ?? '0',
           liqBalanceHuman,
