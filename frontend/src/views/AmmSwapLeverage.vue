@@ -398,6 +398,40 @@
     }
   }
 
+  // 1. swap input
+const swapAbiParams = parseAbiParameters(
+  'address recipient, uint256 amountOut, uint256 amountInMaximum, bytes path'
+);
+function buildSwapInput(
+  recipient: `0x${string}`,
+  amountOut: bigint,
+  amountInMaximum: bigint,
+  path: `0x${string}`
+): `0x${string}` {
+  return encodeAbiParameters(swapAbiParams, [
+    recipient,
+    amountOut,
+    amountInMaximum,
+    path,
+  ]);
+}
+
+// 2. sweep/unwrap input
+const sweepAbiParams = parseAbiParameters(
+  'address token, address recipient, uint256 amount'
+);
+function buildSweepOrUnwrapInput(
+  token: `0x${string}`,
+  recipient: `0x${string}`,
+  amount: bigint
+): `0x${string}` {
+  return encodeAbiParameters(sweepAbiParams, [
+    token,
+    recipient,
+    amount,
+  ]);
+}
+
   const executeBuyLeverage = async () => {
     if (!wallet.account || !leverageAmountIn.value || !mintPrice.value) return
     if (!wallet.walletClient) {
@@ -410,6 +444,15 @@
     txHash.value = ''
     
     try {
+
+      // 在浏览器控制台或在组件里临时打印
+      console.log('store.account:', wallet.account);
+      // @ts-ignore
+      console.log('window.ethereum.selectedAddress:', window.ethereum?.selectedAddress);
+      // @ts-ignore
+      const ethAccounts = await window.ethereum?.request?.({ method: 'eth_accounts' });
+      console.log('provider accounts:', ethAccounts);
+
       console.log('🔄 ===== 开始购买 Leverage Token =====')
       console.log(`流程: DEX购买WLTC → 铸造Stable+Leverage → AMM卖出Stable\n`)
       
@@ -469,17 +512,50 @@
       // 基于 uniswap quoter 的价格 * 1.05 作为 approve 额度，防止 slippage 导致失败
       // 检查并设置 allowance：如果当前 allowance 足够则跳过；否则先（可选）清零再批准。
 
-      let allowance = await ensureAllowance(usdcToken, wallet.account as `0x${string}`, UniversalRouterAddress, AmountInUsdcWithSlippage);
-      console.log(`  ✅ 当前Allowance(user -> Universal Router): ${formatUnits(allowance, 6)} USDC`);
-      
-      //1.2 执行 swap
-      const path = encodePacked(['address', 'uint24', 'address'], [WLTCAddress as `0x${string}`, fee, USDCAddress as `0x${string}`]);
-      const swapInput = encodeAbiParameters(
-        parseAbiParameters('address, uint256, uint256, bytes, bool'),
-        [wallet.account as `0x${string}`, wltcNeeded, AmountInUsdcWithSlippage, path, true]
-      );
-      // @ts-ignore - Viem type inference issue with dynamic ABI
-      const swapTx = await universalRouter.write.execute(['0x01', [swapInput], BigInt(Math.floor(Date.now() / 1000) + 1800)]);
+      const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
+      const add1 = '0x0000000000000000000000000000000000000002' as const;
+      const add2 = '0xE49ACc3B16c097ec88Dc9352CE4Cd57aB7e35B95' as const;
+
+      //无限授权于permit2
+      console.log(`  执行无限授权予permit2`);
+      const InfinitAmountInUsdcApproved = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+      let allowance = await ensureAllowance(usdcToken, wallet.account as `0x${string}`,PERMIT2_ADDRESS, InfinitAmountInUsdcApproved);
+      console.log(`  已授权给 Permit2 的 USDC 额度: ${formatUnits(allowance, 6)}\n`);
+
+    //参数一：commands
+    // 0x01 = V3 exactOut swap
+    // 0x05 = Sweep
+    // 0x04 = Unwrap
+    // 顺序执行
+    const commands = "0x010504";
+    const path = encodePacked(['address', 'uint24', 'address'], [WLTCAddress, fee, USDCAddress]);
+    // swap input
+    const swapInput = buildSwapInput(
+      add1 as `0x${string}`,
+      wltcNeeded,
+      AmountInUsdcWithSlippage,
+      path
+    );
+
+    // sweep input（假设 sweep 剩余的 WLTC，数量可根据实际情况调整）
+    const sweepInput = buildSweepOrUnwrapInput(
+      WLTCAddress,
+      add2 as `0x${string}`,
+      0n // 如果你不确定数量，可以填0n，合约会 sweep 全部
+    );
+
+    // unwrap input（如果 WLTC 是包裹币，否则可省略）
+    const unwrapInput = buildSweepOrUnwrapInput(
+      WLTCAddress,
+      wallet.account as `0x${string}`,
+      wltcNeeded
+    );
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20);
+
+    // 组合 inputs
+    const inputs = [swapInput, sweepInput, unwrapInput];
+
+      const swapTx = await (universalRouter as any).write.execute([commands, inputs, deadline]);
       await publicClient.waitForTransactionReceipt({ hash: swapTx });
       const usdcAfterBuy = await (usdcToken as any).read.balanceOf?.([wallet.account]) as bigint
       const usdcSpentOnWltc = usdcBalanceStart - usdcAfterBuy
