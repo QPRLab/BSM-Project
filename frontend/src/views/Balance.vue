@@ -6,12 +6,12 @@
         <h2>Wallet Balances</h2>
         <p class="muted">View and manage your WLTC / S / USDC balances</p>
       </div>
-      <div>
-        <button class="btn" @click="toggleWallet" :disabled="loading">
-          <span v-if="loading">Processing...</span>
-          <span v-else>{{ account ? 'Disconnect' : 'Connect Wallet' }}</span>
-        </button>
-      </div>
+          <div>
+            <button class="btn" @click="onConnectClick" :disabled="loading">
+              <span v-if="loading">Processing...</span>
+              <span v-else>{{ account ? 'Disconnect' : 'Connect Wallet' }}</span>
+            </button>
+          </div>
     </header>
 
     <div v-if="account" class="grid">
@@ -50,35 +50,74 @@ import { storeToRefs } from 'pinia'
 const wallet = useWalletStore()
 const { account, Sbalance, Lbalance, USDCbalance, WLTCbalance, error, loading } = storeToRefs(wallet)
 
-async function connectWallet() {
-  if (wallet.loading) return;
-  wallet.setLoading(true);
-  try {
-    // @ts-ignore
-    const [address] = await window.ethereum.request({ method: 'eth_requestAccounts' })
-    // setAccount 会自动初始化 walletClient
-    wallet.setAccount(address)
+// 点击 Connect 时先展示钱包选择（若已连接则断开）
+async function onConnectClick() {
+  if (wallet.account) {
+    disconnectWallet()
+    return
+  }
+  // detect providers
+  const detected: { id: string; name: string; provider: any }[] = []
+  const w = (window as any)
+  // providers array
+  if (Array.isArray(w.ethereum?.providers)) {
+    for (const p of w.ethereum.providers) {
+      if (p.isMetaMask) detected.push({ id: 'metamask', name: 'MetaMask', provider: p })
+      else if (p.isOkxWallet || p.isOKX || p.isOkxWallet || p.isOkx || p.isOKExWallet) detected.push({ id: 'okx', name: 'OKX Wallet', provider: p })
+      else detected.push({ id: p._name || 'injected', name: p._name || 'Injected Wallet', provider: p })
+    }
+  } else if (w.ethereum) {
+    const p = w.ethereum
+    if (p.isMetaMask) detected.push({ id: 'metamask', name: 'MetaMask', provider: p })
+    else detected.push({ id: 'injected', name: 'Injected Wallet', provider: p })
+  }
+  // okx separate object
+  if (w.okxwallet && !detected.find(d => d.id === 'okx')) detected.push({ id: 'okx', name: 'OKX Wallet', provider: w.okxwallet })
 
-    // 获取已初始化的 walletClient
+  // if only one detected, connect directly
+  if (detected.length === 1) {
+    await connectWithProvider(detected[0].id, detected[0].provider)
+    return
+  }
+
+  // 多个钱包：显示浏览器原生 prompt（confirm-list 简化为 window.prompt 以免引入复杂 UI）
+  // 推荐：替换为真正的 modal 组件。这里做简单实现
+  const choices = detected.map((d, i) => `${i + 1}. ${d.name}`).join('\n')
+  const sel = window.prompt(`Select wallet:\n${choices}\nEnter number:`)
+  const idx = Number(sel) - 1
+  if (!Number.isNaN(idx) && detected[idx]) {
+    await connectWithProvider(detected[idx].id, detected[idx].provider)
+  }
+}
+
+async function connectWithProvider(preferId: string, provider: any) {
+  if (wallet.loading) return;
+  wallet.setLoading(true)
+  try {
+    // request accounts using chosen provider
+    const accounts = await provider.request({ method: 'eth_requestAccounts' })
+    const address = Array.isArray(accounts) ? accounts[0] : accounts
+    if (!address) throw new Error('No account returned')
+    // save preferred provider in store
+    wallet.setPreferredProvider(preferId)
+    // set account and init walletClient with preference
+    wallet.setAccount(address, preferId)
+
     const walletClient = wallet.walletClient
     if (!walletClient) throw new Error('Failed to initialize wallet client')
 
     const Scontract = await getWalletContract('tokenModules#StableToken', walletClient, 'StableToken') as any
-    const Lcontract = await getWalletContract('coreModules#MultiLeverageToken', walletClient, 'MultiLeverageToken') as any
     const USDCcontract = await getWalletContract('tokenModules#USDCMock', walletClient, 'USDCMock') as any
     const WLTContract = await getWalletContract('tokenModules#WLTCMock', walletClient, 'WLTCMock') as any
 
     const rawSBalance = await (Scontract.read.balanceOf?.([address]) as Promise<bigint>);
     const S = rawSBalance ? Number(formatUnits(rawSBalance, 18)).toFixed(4) : '0.0000'
-    // const rawLBalance = await (Lcontract.read.balanceOf?.([address]) as Promise<bigint>);
-    // const L = rawLBalance ? Number(formatUnits(rawLBalance, 18)).toFixed(4) : '0.0000'
-    const L = ''
     const rawUSDCBalance = await (USDCcontract.read.balanceOf?.([address]) as Promise<bigint>);
     const USDC = rawUSDCBalance ? Number(formatUnits(rawUSDCBalance, 6)).toFixed(4) : '0.0000'
     const rawWLTCBalance = await (WLTContract.read.balanceOf?.([address]) as Promise<bigint>);
     const WLTC = rawWLTCBalance ? Number(formatUnits(rawWLTCBalance, 18)).toFixed(4) : '0.0000'
 
-    wallet.setBalances({ S, L, USDC, WLTC })
+    wallet.setBalances({ S, L: '', USDC, WLTC })
     wallet.setError('')
   } catch (e: any) {
     wallet.setError(e.message || 'Connection failed')

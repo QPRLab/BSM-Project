@@ -124,7 +124,6 @@ async function refreshAll() {
     // set reactive counters
     totalAuctionsCount.value = totalAuctions ? Number(totalAuctions) : 0
     activeAuctionsCount.value = activeAuctionCount ? Number(activeAuctionCount) : 0
-    console.log('Total auctions:', totalAuctionsCount.value, 'Active auctions:', activeAuctionsCount.value)
 
     // iterate all auctions and read mapping
     auctionsRows.value = []
@@ -134,11 +133,12 @@ async function refreshAll() {
     for (let i = 1; i <= total; i++) {
       try {
         const id = BigInt(i)
+        const Active: any = await (auc as any).read.auctionIsActive?.([id]) as boolean
+        if (!Active) continue
         const a: any = await (auc as any).read.auctions?.([id])
         const b: any = await (auc as any).read.getAuctionStatus?.([id])
         if (!a) continue
         if (!b) continue
-        // struct Auction: (arrayIndex, underlyingAmount, originalOwner, tokenId, startTime, startingPrice, currentPrice, totalPayment)
         const valueToBeBurned = a[0] as bigint
         const underlyingAmount = a[1] as bigint
         const originalOwner = a[3] as string
@@ -152,15 +152,11 @@ async function refreshAll() {
         //calculate the remaining underlying amount based on current price
         const WAD = 10n**18n
         let remainingUnderlyingAmount: bigint = 0n
-        if(currentPrice === 0n){
-          // skip finished auctions
-          continue
-        }
-        else{
-          remainingUnderlyingAmount = (valueToBeBurned * WAD) / currentPrice        
+        if(currentPrice > 0n){
+          remainingUnderlyingAmount = (valueToBeBurned * WAD) / currentPrice  
         }
         
-
+        console.log('Remaining underlying amount:', formatEther(remainingUnderlyingAmount))
         // attempt to read liquidation status for (originalOwner, tokenId)
         let liqBalanceHuman: string | undefined = undefined
         let isLiquidated = false
