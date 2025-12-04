@@ -376,6 +376,38 @@
         console.log('✅ 已授权，跳过授权步骤')
       }
       
+      // 在执行swapLeverageToUsdc之前，检查oracle价格是否有效
+      let priceValid = false;
+      try {
+        const oracle = await getReadonlyContract('coreModules#LTCPriceOracle', 'LTCPriceOracle');
+        const result = await (oracle as any).read.getPriceStatus?.();
+        if (!result) {
+          errorMsg.value = '无法获取预言机价格，请稍后重试';
+          loading.value = false;
+          console.error('Oracle returned falsy result:', result);
+          return;
+        }
+        // 如果返回是数组，优先显式解构；若是对象则按字段读取
+        // 示例（假设第4项是有效标志）：
+        const isValid = Array.isArray(result) ? Boolean(result[3]) : Boolean((result as any).isValid ?? result[3]);
+        priceValid = isValid;
+      } catch (err: any) {
+        errorMsg.value = '获取预言机价格失败：' + (err?.message ?? String(err));
+        loading.value = false;
+        console.error('Failed to read oracle price:', err);
+        return;
+      }
+
+      if (!priceValid) {
+        errorMsg.value = 'Oracle price is not valid. Please update oracle price manually. If you are the oracle updater, go to the Oracle page to submit a new price. Otherwise, please contact gelei1988@gmail.com to add you as price feeder.';
+        loading.value = false;
+        return;
+      }
+      // 成功继续，清理可能的旧错误
+      errorMsg.value = '';
+
+
+
       // 步骤2: 执行 swap (注意：gas limit 使用默认值，不手动设置)
       console.log('📤步驟2：执行 swap')
       const swapTx = await (ammSwap as any).write.swapLeverageToUsdc?.([
@@ -398,40 +430,39 @@
     }
   }
 
+
   // 1. swap input
-const swapAbiParams = parseAbiParameters(
-  'address recipient, uint256 amountOut, uint256 amountInMaximum, bytes path'
-);
-function buildSwapInput(
-  recipient: `0x${string}`,
-  amountOut: bigint,
-  amountInMaximum: bigint,
-  path: `0x${string}`
-): `0x${string}` {
-  return encodeAbiParameters(swapAbiParams, [
-    recipient,
-    amountOut,
-    amountInMaximum,
-    path,
-  ]);
-}
-
-// 2. sweep/unwrap input
-const sweepAbiParams = parseAbiParameters(
-  'address token, address recipient, uint256 amount'
-);
-function buildSweepOrUnwrapInput(
-  token: `0x${string}`,
-  recipient: `0x${string}`,
-  amount: bigint
-): `0x${string}` {
-  return encodeAbiParameters(sweepAbiParams, [
-    token,
-    recipient,
-    amount,
-  ]);
-}
-
+  const swapAbiParams = parseAbiParameters(
+    'address recipient, uint256 amountOut, uint256 amountInMaximum, bytes path'
+  );
+  function buildSwapInput(
+    recipient: `0x${string}`,
+    amountOut: bigint,
+    amountInMaximum: bigint,
+    path: `0x${string}`
+  ): `0x${string}` {
+    return encodeAbiParameters(swapAbiParams, [
+      recipient,
+      amountOut,
+      amountInMaximum,
+      path,
+    ]);
+  }
+  // 2. sweep/unwrap input
+  const sweepAbiParams = parseAbiParameters(
+    'address token, address recipient, uint256 amount'
+  );
+  function buildSweepOrUnwrapInput(
+    token: `0x${string}`,
+    recipient: `0x${string}`,
+    amount: bigint
+  ): `0x${string}` {
+    return encodeAbiParameters(sweepAbiParams, [
+      token,
+      recipient,
+      amount,
+    ]);
+  }
   const executeBuyLeverage = async () => {
     if (!wallet.account || !leverageAmountIn.value || !mintPrice.value) return
     if (!wallet.walletClient) {
