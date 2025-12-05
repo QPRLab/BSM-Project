@@ -105,16 +105,32 @@ const permit2Abi = [
       { name: 'nonce', type: 'uint48' },
     ],
   },
-   {
+  {
     "inputs": [
-      { "internalType": "address", "name": "owner", "type": "address" },
-      { "internalType": "address", "name": "token", "type": "address" }
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint160",
+        "name": "amount",
+        "type": "uint160"
+      },
+      {
+        "internalType": "uint48",
+        "name": "expiration",
+        "type": "uint48"
+      }
     ],
-    "name": "nonce",
-    "outputs": [
-      { "internalType": "uint48", "name": "", "type": "uint48" }
-    ],
-    "stateMutability": "view",
+    "name": "approve",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
 
@@ -268,12 +284,13 @@ function buildSweepOrUnwrapInput(
 //-------------------------------------主流程-------------------------------------//
 async function main() {
 
+
     console.log("🔄 ===== test use USDC to buy WLTC =====\n");
     const usdcBalanceStart = await usdcContract.read.balanceOf([USER_ADDRESS]) as bigint;
     const wltcBalanceBefore = await wltcContract.read.balanceOf([USER_ADDRESS]) as bigint;    
 
     //目标：需要购买的Leverage数量及参数
-    const LAmountDesired = 10n * 10n ** 18n;
+    const LAmountDesired = 100n * 10n ** 18n;
     const leverageType = 2n as bigint; // AGGRESSIVE
     const mintPrice = 120n * 10n ** 18n;
 
@@ -306,7 +323,7 @@ async function main() {
       const AmountInUsdc = await quoter.read.quoteExactOutput([pathUsdcToWltc as `0x${string}`, wltcNeeded]) as bigint; // 6 decimals (USDC)
       console.log(`  根据UniSwap Quoter, 需要 USDC: ${formatUnits(AmountInUsdc as bigint, 6)}\n`);
       
-      console.log("📤 step 3: 最大支出USDC: +5%滑点 & 无限授权:");
+      console.log("📤 step 3: 最大支出USDC: +5%滑点 & 两步授权(USDC-->permit2-->Universal Router):");
       // 添加5% slippage buffer (使用整数运算以保持 bigint 精度)
       // 使用向上取整：ceil(AmountInUsdc * 105 / 100) = (AmountInUsdc*105 + 99) / 100
       const slippageNumerator = 105n;
@@ -314,21 +331,33 @@ async function main() {
       const AmountInUsdcWithSlippage = (AmountInUsdc * slippageNumerator + slippageDenominator - 1n) / slippageDenominator;
       console.log(`  根据滑点, 最多愿意支付需要 USDC: ${formatUnits(AmountInUsdcWithSlippage, 6)}`);
       
-      //无限授权
-      const AmountInUsdcApproved = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-      // const AmountInUsdcApproved = 2n ** 256n - 1n;
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20) as bigint;
+      console.log("  第一步授权： USDC -> permit2 授权");
+      //usdc -> permit2 授权
       const txHash0 = await walletClient.writeContract({
         address: USDC_ADDRESS,
         abi: erc20Abi,
         functionName: 'approve',
+        args: [PERMIT2_ADDRESS, AmountInUsdcWithSlippage],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: txHash0 });
+      //检查usdc给permit2的授权额度是否足够
+      const allowance = await usdcContract.read.allowance([USER_ADDRESS, PERMIT2_ADDRESS]) as bigint;
+      console.log(`  当前授权(usdc-->permit2)额度: ${formatUnits(allowance, 6)}`);
+      console.log("  第二步授权：permit2 -> universal router 授权");
+      const txHash1 = await walletClient.writeContract({
+        address: PERMIT2_ADDRESS,
+        abi: permit2Abi,
+        functionName: 'approve',
         args: [
-          PERMIT2_ADDRESS, // Permit2 地址
-          AmountInUsdcApproved, // 授权额度（BigInt，单位为 USDC 的最小单位）
+          USDC_ADDRESS, // 代币地址
+          UNIVERSAL_ROUTER_ADDRESS, // 授权给 Universal Router
+          AmountInUsdcWithSlippage, // 授权额度（BigInt，单位为 USDC 的最小单位）
+          Number(deadline), // 授权额度（BigInt，单位为 USDC 的最小单位）
         ],
       });
-      console.log("  Approve tx hash:", txHash0);
-      const allowance = await usdcContract.read.allowance([USER_ADDRESS, PERMIT2_ADDRESS]) as bigint;
-      console.log(`  已授权给 Permit2 的 USDC 额度: ${formatUnits(allowance, 6)}\n`);
+      await publicClient.waitForTransactionReceipt({ hash: txHash1 });
+
 
       console.log("📤 step 4: 构造参数(0x010504)并发送交易");
       // 4. 构造并发送交易
@@ -360,7 +389,7 @@ async function main() {
         USER_ADDRESS,
         wltcNeeded
       );
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20);
+      
       // 组合 inputs
       const inputs = [swapInput, sweepInput, unwrapInput];
 
@@ -391,17 +420,18 @@ async function main() {
       // console.log(decoded.args[1]);            // inputs: ['0x...', '0x...', ...]
       // console.log(decoded.args[2]);            // deadline: BigInt(...)
       // const inputs = decoded.args[1];
+      // const inputs = ["0x000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000409fb56876e000000000000000000000000000000000000000000000000000000000000022e1940000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000002b75b8cde44e33135e6a08a59a23fc1e244a762501000bb8790fb0d2b3edd1962a58d8f6095f3508c017e742000000000000000000000000000000000000000000","0x00000000000000000000000075b8cde44e33135e6a08a59a23fc1e244a762501000000000000000000000000e49acc3b16c097ec88dc9352ce4cd57ab7e35b950000000000000000000000000000000000000000000000000000000000000000","0x00000000000000000000000075b8cde44e33135e6a08a59a23fc1e244a7625010000000000000000000000006bcf5fbb6569921c508eea15ff16b92426f9921800000000000000000000000000000000000000000000000000409fb56876e000"];
 
-      console.log("\n--- 解码inputs参数是否正确 ---");
-      // 解码查看参数
-      const swapAbi = parseAbiParameters('address recipient, uint256 amountOut, uint256 amountInMaximum, bytes path');
-      const swapDecoded = decodeAbiParameters(swapAbi, inputs[0] as `0x${string}`);
-      console.log('swapDecoded', swapDecoded);
-      const sweepAbi = parseAbiParameters('address token, address recipient, uint256 amount');
-      const sweepDecoded = decodeAbiParameters(sweepAbi, inputs[1] as `0x${string}`);
-      console.log('sweepDecoded', sweepDecoded);    
-      const unwrapDecoded = decodeAbiParameters(sweepAbi, inputs[2] as `0x${string}`);
-      console.log('unwrapDecoded', unwrapDecoded);
+      // console.log("\n--- 解码inputs参数是否正确 ---");
+      // // 解码查看参数
+      // const swapAbi = parseAbiParameters('address recipient, uint256 amountOut, uint256 amountInMaximum, bytes path');
+      // const swapDecoded = decodeAbiParameters(swapAbi, inputs[0] as `0x${string}`);
+      // console.log('swapDecoded', swapDecoded);
+      // const sweepAbi = parseAbiParameters('address token, address recipient, uint256 amount');
+      // const sweepDecoded = decodeAbiParameters(sweepAbi, inputs[1] as `0x${string}`);
+      // console.log('sweepDecoded', sweepDecoded);    
+      // const unwrapDecoded = decodeAbiParameters(sweepAbi, inputs[2] as `0x${string}`);
+      // console.log('unwrapDecoded', unwrapDecoded);
 
       const txHash = await walletClient.writeContract({
         address: UNIVERSAL_ROUTER_ADDRESS,

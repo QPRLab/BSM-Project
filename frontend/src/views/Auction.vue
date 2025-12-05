@@ -208,12 +208,51 @@ async function refreshAll() {
 
 // helper: ensure wallet client and account
 async function ensureWalletClient() {
-  if (typeof (window as any).ethereum === 'undefined') throw new Error('No injected wallet found')
-  const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+  const wallet = (await import('../stores/wallet')).useWalletStore()
+
+  // reuse existing stored client if present
+  try {
+    const existingClient = (wallet.walletClient as any)?.value
+    const existingAccount = wallet.account as string | null
+    if (existingClient && existingAccount) {
+      connectedAccount.value = existingAccount
+      return { caller: existingAccount, walletClient: existingClient }
+    }
+  } catch {}
+
+  // pick provider according to saved preference (avoid unconditional window.ethereum.request)
+  const w = (window as any)
+  let chosenProvider: any = null
+
+  // prefer explicit OKX object
+  if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+
+  // if providers array exists, choose according to preference
+  if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+    const providers = w.ethereum.providers
+    if (wallet.preferredProvider === 'okx') {
+      chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+    } else if (wallet.preferredProvider === 'metamask') {
+      chosenProvider = providers.find((p: any) => p.isMetaMask)
+    }
+    chosenProvider = chosenProvider || providers[0]
+  }
+
+  // fallback to window.ethereum or okxwallet
+  if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+
+  if (!chosenProvider) throw new Error('No injected wallet found')
+
+  const { requestAccountsFrom } = await import('../utils/client')
+  const accounts = await requestAccountsFrom(chosenProvider) as string[]
   const caller = accounts && accounts.length > 0 ? accounts[0] : null
   if (!caller) throw new Error('No account available')
-  const walletClient: any = createWalletClientInstance(caller)
+
+  const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
   if (!walletClient) throw new Error('Could not create wallet client')
+
+  // persist account + client in store so other pages reuse exact provider
+  try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
   connectedAccount.value = caller
   return { caller, walletClient }
 }
@@ -281,10 +320,21 @@ refreshAll()
 </script>
 
 <style scoped>
-.param-table { width:100%; border-collapse: collapse; margin-top:0.5rem }
-.param-table th, .param-table td { border:1px solid #e5e7eb; padding:0.5rem 0.75rem; text-align:left }
-.refresh-btn { background:#2563eb; color:#fff; border:none; padding:0.4rem 0.75rem; border-radius:0.375rem }
-.action-btn { background:#111827; color:#fff; border:none; padding:0.25rem 0.5rem; border-radius:0.25rem }
-.finished { color: #16a34a; font-weight:700 }
-.error { color:#ff6b6b }
+.liquidation-page { max-width:1000px; margin:0 auto; color:#0f172a; padding:1rem }
+.liquidation-page h2 { font-size:1.5rem; font-weight:700; margin-bottom:0.75rem; }
+.controls { display:flex; gap:1rem; align-items:center; margin-bottom:0.75rem }
+.refresh-btn { padding:0.45rem 0.75rem; border-radius:6px; border:1px solid rgba(79,70,229,0.12); background:rgba(79,70,229,0.06); color:#4f46e5; cursor:pointer }
+.refresh-btn:disabled { opacity:0.6; cursor:not-allowed }
+.auction-summary { margin-bottom:1rem; color:#6b7280 }
+
+.param-table { width:100%; border-collapse:collapse; background:#ffffff; border:1px solid #f1f3f5; border-radius:8px; overflow:hidden }
+.param-table thead th { background:#ffffff; color:#374151; font-weight:700; padding:0.75rem; border-bottom:1px solid #f1f3f5; text-align:left }
+.param-table tbody td { padding:0.65rem 0.75rem; border-bottom:1px solid #f7f9fb; color:#374151 }
+.param-table tbody tr:last-child td { border-bottom:none }
+
+.action-btn { background:linear-gradient(90deg,#4f46e5,#06b6d4); color:#fff; border:none; padding:0.35rem 0.6rem; border-radius:6px; cursor:pointer }
+.action-btn:hover { filter:brightness(0.98) }
+
+.finished { color:#10b981; font-weight:700 }
+.error { color:#ef4444 }
 </style>

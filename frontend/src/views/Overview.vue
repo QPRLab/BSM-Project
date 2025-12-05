@@ -6,7 +6,7 @@
         <p class="lead muted">Stake WLTC to mint Stable token S and Leverage token L — S is pegged to 1, L accrues underlying returns.</p>
       </div>
       <div>
-        <button class="icon-btn" @click="refresh" :disabled="loading">⟳ Refresh</button>
+        <button class="icon-btn" @click="refresh" :disabled="loading">🔄 Refresh</button>
       </div>
     </header>
 
@@ -84,7 +84,8 @@ onMounted(() => { loadOverview() })
 </script>
 
 <style scoped>
-:root { --max-width:1100px }
+:root { --max-width:980px }
+/* .page-wrap { padding: 1.25rem; display:flex; justify-content:center } */
 .page-wrap { padding: 1.25rem; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial }
 .page-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; max-width:var(--max-width); margin:0 auto 1rem }
 .title-area { display:flex; flex-direction:column }

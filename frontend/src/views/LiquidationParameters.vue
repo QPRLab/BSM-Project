@@ -154,14 +154,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.liquidation-page { padding: 1rem; }
-.controls { display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem }
-.controls input{ padding:0.4rem; min-width:360px }
+.liquidation-page { max-width:900px; margin:0 auto; color:#0f172a; padding:1rem }
+.controls { display:flex; gap:0.75rem; align-items:center; margin-bottom:1rem }
+.controls input{ padding:0.5rem; min-width:320px; border:1px solid #e6e9ee; border-radius:6px }
 .config .row{ margin:0.35rem 0 }
-.error{ color: #ff6b6b; margin: 0.5rem 0 }
-.hint{ color:#9ca3af; margin-top:1rem }
-.param-table { width:100%; border-collapse: collapse; margin-top:0.75rem }
-.param-table th, .param-table td { border:1px solid #e5e7eb; padding:0.5rem 0.75rem; text-align:left; background:#fff; color:#111827 }
+.error{ color:#ef4444; margin:0.5rem 0 }
+.hint{ color:#6b7280; margin-top:1rem }
+
+.param-table { width:100%; border-collapse:collapse; background:#ffffff; border:1px solid #f1f3f5; border-radius:8px; overflow:hidden }
+.param-table thead th { background:#ffffff; color:#374151; font-weight:700; padding:0.75rem; border-bottom:1px solid #f1f3f5; text-align:left }
+.param-table tbody td { padding:0.65rem 0.75rem; border-bottom:1px solid #f7f9fb; color:#374151 }
+.param-table tbody tr:last-child td { border-bottom:none }
+
 .auction-section { margin-top:1.5rem }
 .spacer { height:1.2rem }
+
+@media (max-width:640px) { .controls input{ min-width:unset; width:100% } }
 </style>

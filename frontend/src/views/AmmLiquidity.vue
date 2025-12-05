@@ -157,13 +157,49 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { parseUnits, formatUnits, getContract } from 'viem'
+import { publicClient, createWalletClientInstance } from '../utils/client'
 import LPToken from '../abi/LPToken.json'
 import { getReadonlyContract, getWalletContract } from '../utils/contracts'
-import { publicClient } from '../utils/client'
 import { useWalletStore } from '../stores/wallet'
 import { AMMLiquidityAddress, StableTokenAddress, USDCMockAddress } from '../config/addresses'
 
 const wallet = useWalletStore()
+
+async function ensureWalletClient() {
+  // If store already has an initialized client and account, reuse it
+  try {
+    const existingClient = (wallet.walletClient as any)?.value
+    const existingAccount = wallet.account as string | null
+    if (existingClient && existingAccount) {
+      return { caller: existingAccount, walletClient: existingClient }
+    }
+  } catch {}
+
+  const w = (window as any)
+  let chosenProvider: any = null
+  if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+  if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+    const providers = w.ethereum.providers
+    if (wallet.preferredProvider === 'okx') {
+      chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+    } else if (wallet.preferredProvider === 'metamask') {
+      chosenProvider = providers.find((p: any) => p.isMetaMask)
+    }
+    chosenProvider = chosenProvider || providers[0]
+  }
+  if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+  if (!chosenProvider) throw new Error('No injected wallet found')
+
+  const { requestAccountsFrom } = await import('../utils/client')
+  const accounts = await requestAccountsFrom(chosenProvider) as string[]
+  const caller = accounts && accounts.length > 0 ? accounts[0] : null
+  if (!caller) throw new Error('No account available')
+
+  const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
+  if (!walletClient) throw new Error('Could not create wallet client')
+  try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
+  return { caller, walletClient }
+}
 
 //=====获取Address & ABI，创建Contract实例=====
 if (!AMMLiquidityAddress) throw new Error('AMMLiquidity address missing in frontend config: ammModules#AMMLiquidity')
@@ -331,7 +367,13 @@ const selectRemovePercentage = (percentage: number) => {
 
 // 执行添加流动性
 const executeAddLiquidity = async () => {
-  if (!wallet.account || !wallet.walletClient) {
+  let caller: string | null = null
+  let walletClient: any
+  try {
+    const res = await ensureWalletClient()
+    caller = res.caller
+    walletClient = res.walletClient
+  } catch (err) {
     errorMsg.value = 'Please connect wallet first'
     return
   }
@@ -341,12 +383,12 @@ const executeAddLiquidity = async () => {
   txHash.value = ''
 
   try {
-    const ammLiquidity = await getAmmLiquidityWallet(wallet.walletClient)
+    const ammLiquidity = await getAmmLiquidityWallet(walletClient)
 
     if (addTokenType.value === 'stable') {
       // Add Stable
       const stableAmount = parseUnits(String(addAmount.value), 18)
-      const stableContract = await getWalletContract('tokenModules#StableToken', wallet.walletClient, 'StableToken')
+      const stableContract = await getWalletContract('tokenModules#StableToken', walletClient, 'StableToken')
 
       // Approve Stable
       console.log('Approving Stable...')
@@ -356,7 +398,7 @@ const executeAddLiquidity = async () => {
 
       // Approve USDC (estimated amount * 1.1 for slippage)
       const usdcNeeded = parseUnits((addPreview.value.otherToken * 1.1).toFixed(6), 6)
-      const usdcContract = await getWalletContract('tokenModules#USDCMock', wallet.walletClient, 'USDCMock')
+      const usdcContract = await getWalletContract('tokenModules#USDCMock', walletClient, 'USDCMock')
       
       console.log('Approving USDC...')
       const approveUsdcTx = await (usdcContract as any).write.approve?.([AMMLiquidityAddress, usdcNeeded])
@@ -373,7 +415,7 @@ const executeAddLiquidity = async () => {
     } else {
       // Add USDC
       const usdcAmount = parseUnits(String(addAmount.value), 6)
-      const usdcContract = await getWalletContract('tokenModules#USDCMock', wallet.walletClient, 'USDCMock')
+      const usdcContract = await getWalletContract('tokenModules#USDCMock', walletClient, 'USDCMock')
 
       // Approve USDC
       console.log('Approving USDC...')
@@ -383,7 +425,7 @@ const executeAddLiquidity = async () => {
 
       // Approve Stable (estimated amount * 1.1 for slippage)
       const stableNeeded = parseUnits((addPreview.value.otherToken * 1.1).toFixed(18), 18)
-      const stableContract = await getWalletContract('tokenModules#StableToken', wallet.walletClient, 'StableToken')
+      const stableContract = await getWalletContract('tokenModules#StableToken', walletClient, 'StableToken')
       
       console.log('Approving Stable...')
       const approveStableTx = await (stableContract as any).write.approve?.([AMMLiquidityAddress, stableNeeded])
@@ -413,7 +455,13 @@ const executeAddLiquidity = async () => {
 
 // Execute remove liquidity
 const executeRemoveLiquidity = async () => {
-  if (!wallet.account || !wallet.walletClient) {
+  let caller: string | null = null
+  let walletClient: any
+  try {
+    const res = await ensureWalletClient()
+    caller = res.caller
+    walletClient = res.walletClient
+  } catch (err) {
     errorMsg.value = 'Please connect wallet first'
     return
   }
@@ -423,7 +471,7 @@ const executeRemoveLiquidity = async () => {
   txHash.value = ''
 
   try {
-    const ammLiquidity = await getAmmLiquidityWallet(wallet.walletClient)
+    const ammLiquidity = await getAmmLiquidityWallet(walletClient)
 
     // Get LP Token address
     const ammLiquidityRead = await getAmmLiquidityReadonly()
@@ -433,7 +481,7 @@ const executeRemoveLiquidity = async () => {
     const lpToken = getContract({
       address: lpTokenAddress as `0x${string}`,
       abi: LPToken.abi,
-      client: wallet.walletClient
+      client: walletClient
     })
 
     const lpAmount = parseUnits(String(removeAmount.value), 18)
@@ -469,56 +517,57 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.liquidity-container { max-width:800px; margin:auto; color:#e5e7eb; padding:1rem; }
+.liquidity-container { max-width:800px; margin:auto; color:#0f172a; padding:1rem; }
 .liquidity-header { text-align:center; margin-bottom:2rem; }
 .liquidity-header h2 { font-size:2rem; font-weight:700; background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:.5rem; }
-.subtitle { font-size:1rem; color:#9ca3af; }
+.subtitle { font-size:1rem; color:#6b7280; }
 
-.pool-info-card { background:linear-gradient(135deg,#1f2937 0%,#111827 100%); border:1px solid #374151; border-radius:1rem; padding:1.5rem; margin-bottom:2rem; position:relative; }
-.pool-info-card h3 { font-size:1.25rem; font-weight:600; color:#f3f4f6; margin-bottom:1rem; }
+.pool-info-card { background:#ffffff; border-radius:12px; box-shadow: 0 8px 30px rgba(25, 31, 40, 0.06); padding:1.25rem; margin-bottom:1.5rem; position:relative; border:1px solid #f1f3f5 }
+.pool-info-card h3 { font-size:1.25rem; font-weight:600; color:#0f172a; margin-bottom:0.75rem; }
 .reserves-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-.reserve-item { display:flex; justify-content:space-between; padding:.75rem; background:#0f172a; border-radius:.5rem; }
-.reserve-item .label { color:#9ca3af; font-size:.875rem; }
-.reserve-item .value { color:#60a5fa; font-weight:600; }
-.refresh-btn { position:absolute; top:1.5rem; right:1.5rem; padding:.5rem 1rem; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); border-radius:.5rem; color:#60a5fa; cursor:pointer; transition:all .2s; }
-.refresh-btn:hover { background:rgba(59,130,246,0.2); }
+.reserve-item { display:flex; justify-content:space-between; padding:.75rem; background:#ffffff; border-radius:8px; border:1px solid #f1f3f5 }
+.reserve-item .label { color:#6b7280; font-size:.875rem; }
+.reserve-item .value { color:#374151; font-weight:600; }
+.refresh-btn { position:absolute; top:1rem; right:1rem; padding:.5rem 0.75rem; background:rgba(79,70,229,0.06); border:1px solid rgba(79,70,229,0.12); border-radius:6px; color:#4f46e5; cursor:pointer; transition:all .15s; }
+.refresh-btn:hover { background:rgba(79,70,229,0.08); }
 
-.liquidity-card { background:linear-gradient(135deg,#1f2937 0%,#111827 100%); border:1px solid #374151; border-radius:1rem; padding:2rem; }
-.liquidity-direction { display:flex; gap:1rem; margin-bottom:2rem; }
-.direction-btn { flex:1; padding:1rem; border:1px solid #374151; background:transparent; color:#9ca3af; border-radius:.75rem; cursor:pointer; font-size:1rem; font-weight:600; transition:all .2s; }
-.direction-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-.direction-btn:hover { border-color:#3b82f6; }
+.liquidity-card { background:#ffffff; border-radius:12px; box-shadow: 0 8px 30px rgba(25, 31, 40, 0.06); padding:1.5rem; border:1px solid #f1f3f5 }
+.liquidity-direction { display:flex; gap:1rem; margin-bottom:1rem; }
+.direction-btn { flex:1; padding:0.6rem; border:1px solid #e6e9ee; background:transparent; color:#374151; border-radius:8px; cursor:pointer; font-size:0.95rem; font-weight:600; transition:all .2s }
+.direction-btn.active { background:linear-gradient(90deg,#4f46e5,#06b6d4); border-color:transparent; color:#fff }
+.direction-btn:hover { filter:brightness(0.97) }
 
-.token-selector { display:flex; gap:.5rem; margin-bottom:1.5rem; }
-.token-btn { flex:1; padding:.75rem; background:#111827; border:1px solid #374151; border-radius:.5rem; color:#9ca3af; cursor:pointer; transition:all .2s; font-size:.875rem; }
-.token-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; font-weight:600; }
-.token-btn:hover { border-color:#3b82f6; }
+.token-selector { display:flex; gap:.5rem; margin-bottom:1rem; }
+.token-btn { flex:1; padding:.6rem; background:#ffffff; border:1px solid #e6e9ee; border-radius:8px; color:#374151; cursor:pointer; transition:all .15s; font-size:.9rem; }
+.token-btn.active { background:linear-gradient(90deg,#4f46e5,#06b6d4); border-color:transparent; color:#fff; font-weight:600; }
+.token-btn:hover { filter:brightness(0.98) }
 
-.liquidity-form { display:flex; flex-direction:column; gap:1.5rem; }
-.input-group { position:relative; }
-.input-group label { display:block; font-size:.75rem; color:#9ca3af; margin-bottom:.5rem; }
-.input-group input { width:100%; padding:1rem 6rem 1rem 1rem; background:#111827; border:1px solid #374151; border-radius:.75rem; color:#f3f4f6; font-size:1.25rem; box-sizing:border-box; }
-.input-group input:focus { outline:none; border-color:#3b82f6; }
-.token-label { position:absolute; right:1rem; top:50%; transform:translateY(-50%); margin-top:0.75rem; padding:0.25rem 0.75rem; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); border-radius:0.5rem; font-size:.75rem; color:#60a5fa; font-weight:600; }
+.liquidity-form { display:flex; flex-direction:column; gap:1rem; }
+.input-group { position:relative }
+.input-group label { display:block; font-size:.85rem; color:#374151; margin-bottom:.35rem }
+.input-group input { width:100%; padding:0.75rem 3.5rem 0.75rem 0.85rem; background:#ffffff; border:1px solid #e6e9ee; border-radius:8px; color:#0f172a; font-size:1rem; box-sizing:border-box }
+.input-group input:focus { outline:none; border-color:#4f46e5 }
+.token-label { position:absolute; right:0.6rem; top:50%; transform:translateY(-50%); margin-top:0.35rem; padding:0.25rem 0.6rem; background:rgba(79,70,229,0.06); border:1px solid rgba(79,70,229,0.12); border-radius:6px; font-size:.8rem; color:#4f46e5; font-weight:600 }
 
-.percentage-group label { display:block; font-size:.75rem; color:#9ca3af; margin-bottom:.5rem; }
+.percentage-group label { display:block; font-size:.75rem; color:#6b7280; margin-bottom:.5rem; }
 .percentage-buttons { display:flex; gap:.5rem; }
-.pct-btn { flex:1; padding:.75rem; background:#111827; border:1px solid #374151; border-radius:.5rem; color:#9ca3af; cursor:pointer; transition:all .2s; }
-.pct-btn:hover { border-color:#3b82f6; background:rgba(59,130,246,0.1); }
+.pct-btn { flex:1; padding:.6rem; background:#ffffff; border:1px solid #e6e9ee; border-radius:6px; color:#374151; cursor:pointer; transition:all .15s; }
+.pct-btn.active { background:linear-gradient(90deg,#4f46e5,#06b6d4); border-color:transparent; color:#fff; font-weight:600; }
+.pct-btn:hover { filter:brightness(0.97) }
 
-.preview-info { background:#0f172a; border-radius:.75rem; padding:1rem; }
-.preview-info h4 { font-size:.875rem; color:#9ca3af; margin-bottom:.75rem; }
-.info-row { display:flex; justify-content:space-between; font-size:.875rem; color:#9ca3af; margin-bottom:.5rem; }
-.info-row:last-child { margin-bottom:0; }
-.info-row span:last-child { color:#60a5fa; font-weight:600; }
+.preview-info { background:#ffffff; border-radius:8px; padding:0.75rem; border:1px solid #f1f3f5 }
+.preview-info h4 { font-size:.875rem; color:#6b7280; margin-bottom:.5rem; }
+.info-row { display:flex; justify-content:space-between; font-size:.875rem; color:#6b7280; margin-bottom:0.35rem; }
+.info-row:last-child { margin-bottom:0 }
+.info-row span:last-child { color:#374151; font-weight:600 }
 
-.action-btn { width:100%; padding:1rem; background:#3b82f6; border:none; border-radius:.75rem; color:#fff; font-size:1rem; font-weight:600; cursor:pointer; transition:all .2s; }
-.action-btn:hover:not(:disabled) { background:#2563eb; }
-.action-btn:disabled { opacity:.5; cursor:not-allowed; }
+.action-btn { width:100%; padding:0.8rem; background:linear-gradient(90deg,#4f46e5,#06b6d4); border:none; border-radius:8px; color:#fff; font-size:0.98rem; font-weight:700; cursor:pointer }
+.action-btn:hover:not(:disabled) { filter:brightness(0.98) }
+.action-btn:disabled { opacity:.6; cursor:not-allowed }
 
-.tx-result { margin-top:1rem; padding:1rem; background:rgba(16,185,129,0.12); border-radius:.75rem; text-align:center; }
-.tx-result a { color:#10b981; text-decoration:underline; }
-.error-msg { margin-top:1rem; padding:1rem; background:rgba(239,68,68,0.12); border-radius:.75rem; color:#ef4444; text-align:center; }
+.tx-result { margin-top:1rem; padding:0.75rem; background:rgba(16,185,129,0.06); border-radius:8px; text-align:center }
+.tx-result a { color:#059669; text-decoration:underline }
+.error-msg { margin-top:1rem; padding:0.75rem; background:rgba(239,68,68,0.06); border-radius:8px; color:#ef4444; text-align:center }
 
 @media (max-width: 640px) {
   .reserves-grid { grid-template-columns:1fr; }

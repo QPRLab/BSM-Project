@@ -2,10 +2,16 @@
   <div class="swap-container">
     <div class="swap-header">
       <h2>Swap Leverage Token ↔ USDC</h2>
-      <p class="subtitle">Trade Leverage Tokens with USDC</p>
+      <!-- <p class="subtitle">Trade Leverage Tokens with USDC</p> -->
     </div>
 
-    <div class="swap-card">
+    <div class="card">
+      <!-- <header class="card-header">
+        <div>
+          <h2 class="title">Swap Leverage</h2>
+        </div>
+      </header> -->
+      <section class="card-body">
       <!-- 切换买卖方向 -->
       <div class="swap-direction">
         <button :class="['direction-btn', { active: isSellLeverage }]" @click="switchToSell">
@@ -152,6 +158,7 @@
       <div v-if="errorMsg" class="error-msg">
         ❌ {{ errorMsg }}
       </div>
+      </section>
     </div>
   </div>
 </template>
@@ -159,12 +166,69 @@
 <script setup lang="ts">
   import { ref, onMounted, watch } from 'vue'
   import { parseUnits, formatUnits, getContract, formatEther, encodePacked, encodeAbiParameters, parseAbiParameters } from 'viem'
-  import { publicClient } from '../utils/client'
+  import { publicClient, createWalletClientInstance } from '../utils/client'
   import { useWalletStore } from '../stores/wallet'
   import { getReadonlyContract, getWalletContract } from '../utils/contracts'
   import { AMMSwapAddress, AMMLiquidityAddress, MultiLeverageTokenAddress, USDCMockAddress, WLTCMockAddress, StableTokenAddress, CustodianFixedAddress } from '../config/addresses'
 
   const wallet = useWalletStore()
+
+  // helper to get the actual WalletClient instance (from ref.value or init)
+  function getActiveWalletClient(): any {
+    try {
+      const c = (wallet.walletClient as any)?.value
+      if (c) return c
+    } catch {}
+    try {
+      const init = wallet.initWalletClient()
+      return init ?? null
+    } catch { return null }
+  }
+
+  // Ensure we have an authorized wallet client tied to the provider that the user selected.
+  // This mirrors the logic in `Mint.vue` to request accounts from the chosen provider and
+  // create a viem WalletClient using that exact provider instance so subsequent writes
+  // are sent through the authorized provider.
+  async function ensureWalletClient() {
+    try {
+      const existingClient = (wallet.walletClient as any)?.value
+      const existingAccount = wallet.account as string | null
+      if (existingClient && existingAccount) {
+        return { caller: existingAccount, walletClient: existingClient }
+      }
+    } catch {}
+
+    const w = (window as any)
+    let chosenProvider: any = null
+
+    if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+
+    if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+      const providers = w.ethereum.providers
+      if (wallet.preferredProvider === 'okx') {
+        chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+      } else if (wallet.preferredProvider === 'metamask') {
+        chosenProvider = providers.find((p: any) => p.isMetaMask)
+      }
+      chosenProvider = chosenProvider || providers[0]
+    }
+
+    if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+
+    if (!chosenProvider) throw new Error('No injected wallet found')
+
+    const { requestAccountsFrom } = await import('../utils/client')
+    const accounts = await requestAccountsFrom(chosenProvider) as string[]
+    const caller = accounts && accounts.length > 0 ? accounts[0] : null
+    if (!caller) throw new Error('No account available')
+
+    const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
+    if (!walletClient) throw new Error('Could not create wallet client')
+
+    try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
+
+    return { caller, walletClient }
+  }
 
   if (!AMMSwapAddress) throw new Error('AMMSwap address missing in frontend config: ammModules#AMMSwap')
   if (!MultiLeverageTokenAddress) throw new Error('MultiLeverageToken address missing in frontend config: coreModules#MultiLeverageToken')
@@ -185,7 +249,48 @@
   const universalRouterAbi = [
     {"inputs": [{"name": "commands", "type": "bytes"},{"name": "inputs", "type": "bytes[]"},{"name": "deadline", "type": "uint256"}],"name": "execute","outputs": [],"stateMutability": "payable","type": "function"}
   ] as const;
-  const universalRouter = getContract({ address: UniversalRouterAddress, abi: universalRouterAbi, client: wallet.walletClient as any });
+  function getUniversalRouter(client?: any) {
+    const c = client ?? getActiveWalletClient()
+    return getContract({ address: UniversalRouterAddress, abi: universalRouterAbi, client: c as any })
+  }
+
+  const permit2Abi = [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "spender",
+          "type": "address"
+        },
+        {
+          "internalType": "uint160",
+          "name": "amount",
+          "type": "uint160"
+        },
+        {
+          "internalType": "uint48",
+          "name": "expiration",
+          "type": "uint48"
+        }
+      ],
+      "name": "approve",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+  ] as const;
+  const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
+  const add1 = '0x0000000000000000000000000000000000000002' as const;
+  const add2 = '0xE49ACc3B16c097ec88Dc9352CE4Cd57aB7e35B95' as const;
+  function getPermit2Contract(client?: any) {
+    const c = client ?? getActiveWalletClient()
+    return getContract({ address: PERMIT2_ADDRESS, abi: permit2Abi, client: c as any })
+  }
   //==========GELEI==========
 
   // Token address aliases used in swap path encoding
@@ -348,9 +453,16 @@
       return newAllowance;
     }
   const executeSellLeverage = async () => {
-    if (!wallet.account || !selectedTokenId.value || !sellPercentage.value) return
-    if (!wallet.walletClient) {
+    // if (!wallet.account || !leverageAmountIn.value || !mintPrice.value) return
+    let walletClient: any
+    let caller: string | null = null
+    try {
+      const res = await ensureWalletClient()
+      caller = res.caller
+      walletClient = res.walletClient
+    } catch (err) {
       errorMsg.value = 'Please connect wallet first'
+      loading.value = false
       return
     }
     
@@ -359,8 +471,8 @@
     txHash.value = ''
     
     try {
-      const ammSwap = await getWalletContract('ammModules#AMMSwap', wallet.walletClient, 'AMMSwap')
-      const leverageToken = await getWalletContract('coreModules#MultiLeverageToken', wallet.walletClient, 'MultiLeverageToken')
+      const ammSwap = await getWalletContract('ammModules#AMMSwap', walletClient, 'AMMSwap')
+      const leverageToken = await getWalletContract('coreModules#MultiLeverageToken', walletClient, 'MultiLeverageToken')
       
       console.log(`准备卖出: Token ID ${selectedTokenId.value}, 比例 ${sellPercentage.value}%`)
       
@@ -465,8 +577,15 @@
   }
   const executeBuyLeverage = async () => {
     if (!wallet.account || !leverageAmountIn.value || !mintPrice.value) return
-    if (!wallet.walletClient) {
+    let walletClient: any
+    let caller: string | null = null
+    try {
+      const res = await ensureWalletClient()
+      caller = res.caller
+      walletClient = res.walletClient
+    } catch (err) {
       errorMsg.value = 'Please connect wallet first'
+      loading.value = false
       return
     }
     
@@ -488,13 +607,13 @@
       console.log(`流程: DEX购买WLTC → 铸造Stable+Leverage → AMM卖出Stable\n`)
       
       // 合约实例
-      const ammSwap = await getWalletContract('ammModules#AMMSwap', wallet.walletClient, 'AMMSwap')
-      const usdcToken = await getWalletContract('tokenModules#USDCMock', wallet.walletClient, 'USDCMock')
+      const ammSwap = await getWalletContract('ammModules#AMMSwap', walletClient, 'AMMSwap')
+      const usdcToken = await getWalletContract('tokenModules#USDCMock', walletClient, 'USDCMock')
       
       
-      const wltcToken = await getWalletContract('tokenModules#WLTCMock', wallet.walletClient, 'WLTCMock')
-      const stableToken = await getWalletContract('tokenModules#StableToken', wallet.walletClient, 'StableToken')
-      const custodian = await getWalletContract('coreModules#CustodianFixed', wallet.walletClient, 'CustodianFixed')
+      const wltcToken = await getWalletContract('tokenModules#WLTCMock', walletClient, 'WLTCMock')
+      const stableToken = await getWalletContract('tokenModules#StableToken', walletClient, 'StableToken')
+      const custodian = await getWalletContract('coreModules#CustodianFixed', walletClient, 'CustodianFixed')
       
       // 步骤0: 计算需要的资产
       const LAmountDesired = parseUnits(String(leverageAmountIn.value), 18)
@@ -543,15 +662,19 @@
       // 基于 uniswap quoter 的价格 * 1.05 作为 approve 额度，防止 slippage 导致失败
       // 检查并设置 allowance：如果当前 allowance 足够则跳过；否则先（可选）清零再批准。
 
-      const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
-      const add1 = '0x0000000000000000000000000000000000000002' as const;
-      const add2 = '0xE49ACc3B16c097ec88Dc9352CE4Cd57aB7e35B95' as const;
+      
 
-      //无限授权于permit2
-      console.log(`  执行无限授权予permit2`);
-      const InfinitAmountInUsdcApproved = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-      let allowance = await ensureAllowance(usdcToken, wallet.account as `0x${string}`,PERMIT2_ADDRESS, InfinitAmountInUsdcApproved);
-      console.log(`  已授权给 Permit2 的 USDC 额度: ${formatUnits(allowance, 6)}\n`);
+
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20) as bigint;
+      let allowance: bigint;
+      //usdc -> permit2 授权
+      allowance =  await ensureAllowance(usdcToken, wallet.account as `0x${string}`, PERMIT2_ADDRESS, AmountInUsdcWithSlippage);
+      console.log(`  ✅ 当前Allowance(user -> Permit2): ${formatUnits(allowance, 6)} USDC`);
+
+      // Use the wallet-bound Permit2 contract instance (pass the walletClient)
+      const permit2 = getPermit2Contract(walletClient)
+      const txHash1 = await (permit2 as any).write.approve([USDCAddress, UniversalRouterAddress, AmountInUsdcWithSlippage, Number(deadline)])
+      await publicClient.waitForTransactionReceipt({ hash: txHash1 })
 
     //参数一：commands
     // 0x01 = V3 exactOut swap
@@ -581,13 +704,13 @@
       wallet.account as `0x${string}`,
       wltcNeeded
     );
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20);
 
     // 组合 inputs
     const inputs = [swapInput, sweepInput, unwrapInput];
 
-      const swapTx = await (universalRouter as any).write.execute([commands, inputs, deadline]);
-      await publicClient.waitForTransactionReceipt({ hash: swapTx });
+      const universalRouter = getUniversalRouter(walletClient)
+      const swapTx = await (universalRouter as any).write.execute([commands, inputs, deadline])
+      await publicClient.waitForTransactionReceipt({ hash: swapTx })
       const usdcAfterBuy = await (usdcToken as any).read.balanceOf?.([wallet.account]) as bigint
       const usdcSpentOnWltc = usdcBalanceStart - usdcAfterBuy
       console.log(`  ✅ 花费 ${formatUnits(usdcSpentOnWltc, 6)} USDC 购买 WLTC\n`)
@@ -600,12 +723,14 @@
       console.log(`  ✅ 当前Allowance(user -> CustodianFixed): ${formatUnits(allowance, 18)} WLTC`);
       
       const stableBeforeMint = await (stableToken as any).read.balanceOf?.([wallet.account]) as bigint
+      console.log(`  ✅ 铸币前Stable余额: ${formatEther(stableBeforeMint)} Stable`);
       console.log('  铸造 Stable + Leverage...')
       const mintTx = await (custodian as any).write.mint?.([wltcNeeded, priceInWei, type])
       if (!mintTx) throw new Error('Mint failed')
       await publicClient.waitForTransactionReceipt({ hash: mintTx })
-      
+      console.log(`  ✅ Mint transaction hash: ${mintTx}`);
       const stableAfterMint = await (stableToken as any).read.balanceOf?.([wallet.account]) as bigint
+      console.log(`  ✅ 铸币后Stable余额: ${formatEther(stableAfterMint)} Stable`);
       const actualStableMinted = stableAfterMint - stableBeforeMint
       console.log(`  ✅ 铸造 ${formatEther(actualStableMinted)} Stable\n`)
       
@@ -668,36 +793,42 @@
 </script>
 
 <style scoped>
-.swap-container { max-width:600px; margin:auto; color:#e5e7eb; }
+.swap-container { max-width:600px; margin:auto; color:#0f172a; }
 .swap-header { text-align:center; margin-bottom:2rem; }
 .swap-header h2 { font-size:2rem; font-weight:700; background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:.5rem; }
 .subtitle { font-size:1rem; color:#9ca3af; }
 .swap-card { background:linear-gradient(135deg,#1f2937 0%,#111827 100%); border:1px solid #374151; border-radius:1rem; padding:2rem; }
 .swap-direction { display:flex; gap:1rem; margin-bottom:2rem; }
-.direction-btn { flex:1; padding:1rem; border:1px solid #374151; background:transparent; color:#9ca3af; border-radius:.75rem; cursor:pointer; font-size:1rem; font-weight:600; transition:all .2s; }
+/* .direction-btn { flex:1; padding:1rem; border:1px solid #374151; background:transparent; color:#9ca3af; border-radius:.75rem; cursor:pointer; font-size:1rem; font-weight:600; transition:all .2s; }
 .direction-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-.direction-btn:hover { border-color:#3b82f6; }
+.direction-btn:hover { border-color:#3b82f6; } */
+.direction-btn { flex:1; padding:0.6rem; border:1px solid #e6e9ee; background:transparent; color:#374151; border-radius:8px; cursor:pointer; font-size:0.95rem; font-weight:600; transition:all .2s }
+.direction-btn.active { background:linear-gradient(90deg,#4f46e5,#06b6d4); border-color:transparent; color:#fff }
+.direction-btn:hover { filter:brightness(0.97) }
 .swap-form { display:flex; flex-direction:column; gap:1.5rem; }
 .input-group { position:relative; }
-.input-group label { display:block; font-size:.75rem; color:#9ca3af; margin-bottom:.5rem; }
-.input-group input, .token-select { width:100%; padding:1rem 6rem 1rem 1rem; background:#111827; border:1px solid #374151; border-radius:.75rem; color:#f3f4f6; font-size:1.25rem; box-sizing:border-box; }
+.input-group label { display:block; font-size:.85rem; color:#374151; margin-bottom:.35rem; }
+.input-group input, .token-select { width:100%; padding:0.75rem 3.5rem 0.75rem 0.85rem; background:#ffffff; border:1px solid #e6e9ee; border-radius:8px; color:#0f172a; font-size:1rem; box-sizing:border-box; }
 .token-select { padding-right:1rem; }
-.input-group input:focus, .token-select:focus { outline:none; border-color:#3b82f6; }
-.input-group.output input { background:#0f172a; }
-.token-label { position:absolute; right:1rem; top:50%; transform:translateY(-50%); margin-top:0.75rem; padding:0.25rem 0.75rem; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); border-radius:0.5rem; font-size:.75rem; color:#60a5fa; font-weight:600; }
+.input-group input:focus, .token-select:focus { outline:none; border-color:#4f46e5; }
+.input-group.output input { background:#ffffff; }
+.token-label { position:absolute; right:0.6rem; top:50%; transform:translateY(-50%); margin-top:0.35rem; padding:0.25rem 0.6rem; background:rgba(79,70,229,0.06); border:1px solid rgba(79,70,229,0.12); border-radius:6px; font-size:.8rem; color:#4f46e5; font-weight:600 }
 .percentage-group label { display:block; font-size:.75rem; color:#9ca3af; margin-bottom:.5rem; }
 .percentage-buttons { display:flex; gap:.5rem; }
-.pct-btn { flex:1; padding:.75rem; background:#111827; border:1px solid #374151; border-radius:.5rem; color:#9ca3af; cursor:pointer; transition:all .2s; }
+.pct-btn { flex:1; padding:.6rem; background:#ffffff; border:1px solid #e6e9ee; border-radius:6px; color:#374151; cursor:pointer; transition:all .15s; }
 .pct-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; font-weight:600; }
 .pct-btn:hover { border-color:#3b82f6; }
 .swap-arrow { text-align:center; font-size:1.5rem; color:#3b82f6; }
-.swap-info { background:#0f172a; border-radius:.75rem; padding:1rem; }
-.info-row { display:flex; justify-content:space-between; font-size:.875rem; color:#9ca3af; margin-bottom:.5rem; }
+.swap-info { background:#ffffff; border-radius:8px; padding:0.75rem; border:1px solid #f1f3f5; }
+.info-row { display:flex; justify-content:space-between; font-size:.9rem; color:#6b7280; margin-bottom:.35rem; }
 .info-row:last-child { margin-bottom:0; }
-.swap-btn { width:100%; padding:1rem; background:#3b82f6; border:none; border-radius:.75rem; color:#fff; font-size:1rem; font-weight:600; cursor:pointer; transition:all .2s; }
-.swap-btn:hover:not(:disabled) { background:#2563eb; }
-.swap-btn:disabled { opacity:.5; cursor:not-allowed; }
+.swap-btn { width:100%; padding:0.8rem; background:linear-gradient(90deg,#4f46e5,#06b6d4); border:none; border-radius:8px; color:#fff; font-size:0.98rem; font-weight:700; cursor:pointer; }
+.swap-btn:hover:not(:disabled) { filter:brightness(0.98); }
+.swap-btn:disabled { opacity:.6; cursor:not-allowed; }
 .tx-result { margin-top:1rem; padding:1rem; background:rgba(16,185,129,0.12); border-radius:.75rem; text-align:center; }
 .tx-result a { color:#10b981; text-decoration:underline; }
 .error-msg { margin-top:1rem; padding:1rem; background:rgba(239,68,68,0.12); border-radius:.75rem; color:#ef4444; text-align:center; }
+.tx-result { margin-top:1rem; padding:0.75rem; background:rgba(16,185,129,0.06); border-radius:8px; text-align:center; }
+.tx-result a { color:#059669; text-decoration:underline; }
+.error-msg { margin-top:1rem; padding:0.75rem; background:rgba(239,68,68,0.06); border-radius:8px; color:#ef4444; text-align:center; }
 </style>

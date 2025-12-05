@@ -58,9 +58,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { formatEther } from 'viem'
-import { publicClient, createWalletClientInstance } from '../utils/client'
+import { publicClient } from '../utils/client'
 import { getReadonlyContract, getWalletContract } from '../utils/contracts'
 import { LiquidationManagerAddress } from '../config/addresses'
+import { useWalletStore } from '../stores/wallet'
+import { createWalletClientInstance } from '../utils/client'
 
 const addresses = [
   '0x4845d4db01b81A15559b8734D234e6202C556d32',
@@ -184,18 +186,9 @@ async function refreshAll() {
 async function callBark(userAddr: string, tokenIdStr: string) {
   try {
     barking.value = true
+    // prefer the connected wallet from the Pinia store
+    const { caller, walletClient } = await ensureWalletClient()
 
-    if (typeof (window as any).ethereum === 'undefined') {
-      throw new Error('No injected wallet found (MetaMask). Please install/connect a wallet to call bark.')
-    }
-
-    // request accounts
-    const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' }) as string[]
-    const caller = accounts[0]
-    if (!caller) throw new Error('No account available')
-
-    const walletClient: any = createWalletClientInstance(caller)
-    if (!walletClient) throw new Error('Could not create wallet client')
     const liqContract = await getWalletContract('coreModules#LiquidationManager', walletClient, 'LiquidationManager')
     const liqAbi = (liqContract as any).abi
     if (!liqAbi || liqAbi.length === 0) throw new Error('LiquidationManager ABI not found or empty')
@@ -248,6 +241,56 @@ async function callBark(userAddr: string, tokenIdStr: string) {
   }
 }
 
+// helper: ensure wallet client and account (shared pattern with Mint/Auction)
+async function ensureWalletClient() {
+  const wallet = useWalletStore()
+
+  // reuse existing stored client if present
+  try {
+    const existingClient = (wallet.walletClient as any)?.value
+    const existingAccount = wallet.account as string | null
+    if (existingClient && existingAccount) {
+      return { caller: existingAccount, walletClient: existingClient }
+    }
+  } catch {}
+
+  // pick provider according to saved preference (avoid unconditional window.ethereum.request)
+  const w = (window as any)
+  let chosenProvider: any = null
+
+  // prefer explicit OKX object
+  if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+
+  // if providers array exists, choose according to preference
+  if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+    const providers = w.ethereum.providers
+    if (wallet.preferredProvider === 'okx') {
+      chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+    } else if (wallet.preferredProvider === 'metamask') {
+      chosenProvider = providers.find((p: any) => p.isMetaMask)
+    }
+    chosenProvider = chosenProvider || providers[0]
+  }
+
+  // fallback to window.ethereum or okxwallet
+  if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+
+  if (!chosenProvider) throw new Error('No injected wallet found')
+
+  const { requestAccountsFrom } = await import('../utils/client')
+  const accounts = await requestAccountsFrom(chosenProvider) as string[]
+  const caller = accounts && accounts.length > 0 ? accounts[0] : null
+  if (!caller) throw new Error('No account available')
+
+  const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
+  if (!walletClient) throw new Error('Could not create wallet client')
+
+  // persist account and the exact wallet client into store for other pages
+  try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
+
+  return { caller, walletClient }
+}
+
 // auto refresh on mount
 refreshAll()
 
@@ -267,39 +310,36 @@ function formatAddress(a?: string) {
 </script>
 
 <style scoped>
-.leverage-info-page { padding: 1rem }
-.controls { display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem }
-.param-table { width:100%; border-collapse: collapse; margin-top:0.5rem }
-.param-table th, .param-table td { border:1px solid #e5e7eb; padding:0.5rem 0.75rem; text-align:left; background:#fff; color:#111827 }
+.leverage-info-page { max-width:1000px; margin:0 auto; color:#0f172a; padding:1rem }
+.controls { display:flex; gap:0.75rem; align-items:center; margin-bottom:1rem }
+.refresh-btn { padding:0.45rem 0.75rem; border-radius:6px; border:1px solid rgba(79,70,229,0.12); background:rgba(79,70,229,0.06); color:#4f46e5; cursor:pointer }
+.refresh-btn:disabled { opacity:0.6; cursor:not-allowed }
+
 .user-block { margin-bottom:1.25rem }
-.error { color: #ff6b6b }
+.param-table { width:100%; border-collapse:collapse; background:#ffffff; border:1px solid #f1f3f5; border-radius:8px; overflow:hidden }
+.param-table thead th { background:#ffffff; color:#374151; font-weight:700; padding:0.75rem; border-bottom:1px solid #f1f3f5; text-align:left }
+.param-table tbody td { padding:0.65rem 0.75rem; border-bottom:1px solid #f7f9fb; color:#374151 }
+.param-table tbody tr:last-child td { border-bottom:none }
+
+.error { color:#ef4444 }
+
 /* risk labels */
-.risk { padding: 0.25rem 0.5rem; border-radius: 0.25rem; color: #fff; font-weight:600 }
-.risk.safe { background: #16a34a } /* green */
-.risk.low { background: #f59e0b } /* yellow/orange */
-.risk.medium { background: #f97316 } /* orange/red */
-.risk.high { background: #dc2626 } /* deep red */
-.risk { display:inline-block; min-width:88px; text-align:center }
+.risk { padding: 0.25rem 0.5rem; border-radius: 0.25rem; color: #fff; font-weight:600; display:inline-block; min-width:88px; text-align:center }
+.risk.safe { background: #10b981 }
+.risk.low { background: #f59e0b }
+.risk.medium { background: #f97316 }
+.risk.high { background: #dc2626 }
 .risk.bark { display:inline-block }
-.bark-btn { background: #000; color: #fff; border: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; min-width:88px }
-.bark-btn:disabled { opacity: 0.6; cursor: not-allowed }
+
+/* bark button - primary gradient */
+.bark-btn { background: linear-gradient(90deg,#4f46e5,#06b6d4); color:#fff; border:none; padding:0.35rem 0.6rem; border-radius:6px; cursor:pointer }
+.bark-btn:disabled { opacity:0.6; cursor:not-allowed }
 
 /* leverage labels */
-.lev { display:inline-block; padding: 0.25rem 0.5rem; border-radius: 0.25rem; color:#fff; font-weight:700; min-width:88px; text-align:center }
-.lev.conservative { background: #fecaca } /* light red */
-.lev.moderate { background: #f87171 } /* mid red */
-.lev.aggressive { background: #b91c1c } /* deep red */
+.lev { display:inline-block; padding: 0.25rem 0.5rem; border-radius:0.25rem; color:#fff; font-weight:700; min-width:88px; text-align:center }
+.lev.conservative { background: #f59e0b }
+.lev.moderate { background: #f97316 }
+.lev.aggressive { background: #b91c1c }
 
-/* Refresh button styles */
-.refresh-btn {
-  background: #2563eb; /* blue */
-  color: #fff;
-  border: none;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-weight: 600;
-}
-.refresh-btn:hover { background: #1e40af }
-.refresh-btn:disabled { background: #93c5fd; cursor: not-allowed; opacity: 0.8 }
+@media (max-width: 640px) { .param-table thead th { font-size:0.8rem } .param-table tbody td { font-size:0.85rem } }
 </style>

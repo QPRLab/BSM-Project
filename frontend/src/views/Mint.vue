@@ -46,8 +46,8 @@
 
       <footer class="card-footer">
         <div class="left">
-          <div v-if="error" class="error">{{ error }}</div>
-          <div v-else-if="txHash" class="success">Tx: {{ txHash }}</div>
+          <!-- <div v-if="error" class="error">{{ error }}</div>
+          <div v-else-if="txHash" class="success">Tx: {{ txHash }}</div> -->
         </div>
         <div class="right">
           <button class="btn-primary" @click="doMint" :disabled="writing || !wltcAmount || !selectedPrice">
@@ -60,14 +60,15 @@
   </div>
   <div v-if="txHash" class="tx-banner">
     <span class="tx-success">✅ Transaction successful!</span>
-    <a :href="`https://etherscan.io/tx/${txHash}`" target="_blank" rel="noopener noreferrer">View on Etherscan</a>
+    <a :href="`https://sepolia.etherscan.io/tx/${txHash}`" target="_blank" rel="noopener noreferrer">View on Etherscan (Sepolia)</a>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { getContract, parseEther } from 'viem'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { getContract, parseEther, formatUnits } from 'viem'
 import { publicClient, createWalletClientInstance } from '../utils/client'
+import { useWalletStore } from '../stores/wallet'
 import { getReadonlyContract, getWalletContract } from '../utils/contracts'
 import { CustodianFixedAddress } from '../config/addresses'
 
@@ -117,14 +118,27 @@ function formatDecimalFromBigInt(value: bigint | number, decimals: number, fixed
   return negative ? `-${s}` : s
 }
 
-async function refreshBalance() {
+async function refreshBalance(callerOverride?: string | null) {
   try {
-    if (typeof (window as any).ethereum === 'undefined') return
-    let accounts = await (window as any).ethereum.request({ method: 'eth_accounts' }) as string[]
-    if (!accounts || accounts.length === 0) {
-      accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+    // Prefer the application's wallet selection and provider instead of
+    // directly calling window.ethereum — that can inadvertently trigger
+    // MetaMask when the user intended OKX (or another provider).
+    let caller: string | null = null
+    try {
+      if (callerOverride) {
+        caller = callerOverride
+      } else {
+        // If the store already has an account, use it
+        if (wallet.account) caller = wallet.account
+        else {
+          const res = await ensureWalletClient()
+          caller = res?.caller ?? null
+        }
+      }
+    } catch (e) {
+      // could not obtain an authorized client/accounts
+      caller = null
     }
-    const caller = accounts && accounts.length > 0 ? accounts[0] : null
     if (!caller) return
 
     const custodian = await getReadonlyContract('coreModules#CustodianFixed', 'CustodianFixed')
@@ -150,15 +164,66 @@ async function refreshBalance() {
 onMounted(() => {
   // try to load balance if wallet already connected
   refreshBalance()
+  // refresh when wallet connects elsewhere in the app (e.g. via Connect modal)
+  const handler = () => {
+    try { refreshBalance() } catch (_) {}
+  }
+  const handlerWithDetail = (e: any) => {
+    const addr = e?.detail?.address ?? null
+    try { refreshBalance(addr) } catch (_) {}
+  }
+  window.addEventListener('wallet:connected', handlerWithDetail)
+  // cleanup
+  onBeforeUnmount(() => window.removeEventListener('wallet:connected', handlerWithDetail))
 })
 
+const wallet = useWalletStore()
+
 async function ensureWalletClient() {
-  if (typeof (window as any).ethereum === 'undefined') throw new Error('No injected wallet found')
-  const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+  // If store already has an initialized client and account, reuse it
+  try {
+    const existingClient = (wallet.walletClient as any)?.value
+    const existingAccount = wallet.account as string | null
+    if (existingClient && existingAccount) {
+      return { caller: existingAccount, walletClient: existingClient }
+    }
+  } catch {}
+
+  // pick provider according to saved preference (avoid unconditional window.ethereum.request)
+  const w = (window as any)
+  let chosenProvider: any = null
+
+  // prefer explicit OKX object
+  if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+
+  // if providers array exists, choose according to preference
+  if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+    const providers = w.ethereum.providers
+    if (wallet.preferredProvider === 'okx') {
+      chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+    } else if (wallet.preferredProvider === 'metamask') {
+      chosenProvider = providers.find((p: any) => p.isMetaMask)
+    }
+    chosenProvider = chosenProvider || providers[0]
+  }
+
+  // fallback to window.ethereum or okxwallet
+  if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+
+  if (!chosenProvider) throw new Error('No injected wallet found')
+
+  const { requestAccountsFrom } = await import('../utils/client')
+  const accounts = await requestAccountsFrom(chosenProvider) as string[]
   const caller = accounts && accounts.length > 0 ? accounts[0] : null
   if (!caller) throw new Error('No account available')
-  const walletClient: any = createWalletClientInstance(caller)
+
+  // create the viem WalletClient with the exact provider object we used to request accounts
+  const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
   if (!walletClient) throw new Error('Could not create wallet client')
+
+  // persist account and the exact wallet client into store for other pages
+  try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
+
   return { caller, walletClient }
 }
 
@@ -170,7 +235,7 @@ async function doMint() {
     if (!selectedPrice.value) throw new Error('Please select a price')
     if (!wltcAmount.value) throw new Error('Please enter WLTC amount')
 
-    const { walletClient } = await ensureWalletClient()
+    const { caller, walletClient } = await ensureWalletClient()
 
     // get underlying token address from custodian
     const custodian = await getReadonlyContract('coreModules#CustodianFixed', 'CustodianFixed')
@@ -196,6 +261,7 @@ async function doMint() {
 
     // approve underlying to custodian
     const underlyingWrite = getContract({ address: underlyingAddr as `0x${string}`, abi: ERC20_ABI as any, client: walletClient })
+    console.log('approve underlying', underlyingWrite, amountWei)
     const approveTx = await (underlyingWrite as any).write.approve([CustodianFixedAddress as `0x${string}`, amountWei])
     await publicClient.waitForTransactionReceipt({ hash: approveTx as `0x${string}` })
 
@@ -204,11 +270,28 @@ async function doMint() {
     const tx = await (custodianWrite as any).write.mint([amountWei, priceWei, leverage.value])
     await publicClient.waitForTransactionReceipt({ hash: tx as `0x${string}` })
     txHash.value = String(tx)
+    // Refresh balances in the global wallet store so Balance page updates immediately
+    try {
+      const Scontract = await getWalletContract('tokenModules#StableToken', walletClient, 'StableToken') as any
+      const USDCcontract = await getWalletContract('tokenModules#USDCMock', walletClient, 'USDCMock') as any
+      const WLTContract = await getWalletContract('tokenModules#WLTCMock', walletClient, 'WLTCMock') as any
+
+      const rawSBalance = await (Scontract.read.balanceOf?.([caller]) as Promise<bigint>);
+      const S = rawSBalance ? Number(formatUnits(rawSBalance, 18)).toFixed(4) : '0.0000'
+      const rawUSDCBalance = await (USDCcontract.read.balanceOf?.([caller]) as Promise<bigint>);
+      const USDC = rawUSDCBalance ? Number(formatUnits(rawUSDCBalance, 6)).toFixed(4) : '0.0000'
+      const rawWLTCBalance = await (WLTContract.read.balanceOf?.([caller]) as Promise<bigint>);
+      const WLTC = rawWLTCBalance ? Number(formatUnits(rawWLTCBalance, 18)).toFixed(4) : '0.0000'
+
+      try { wallet.setBalances({ S, L: '', USDC, WLTC }) } catch {}
+    } catch (e) {
+      // ignore balance refresh failures
+    }
     // reset inputs
     wltcAmount.value = ''
     customPrice.value = ''
     priceMode.value = '110'
-    alert('Mint successful: ' + txHash.value)
+    // alert('Mint successful: ' + txHash.value)
   } catch (e:any) {
     console.error('mint failed', e)
     error.value = e?.message ?? String(e)
@@ -246,9 +329,9 @@ async function doMint() {
 .small-btn { background: #eef2ff; color:#3730a3; border: none; padding:0.35rem 0.6rem; border-radius:8px; cursor:pointer; font-weight:600 }
 .small-btn:active { transform: translateY(1px) }
 
-/* bottom transaction banner */
-.tx-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; background: #0f172a; color: #fff; padding: 0.65rem 1rem; border-radius: 10px; box-shadow: 0 8px 30px rgba(2,6,23,0.4); display:flex; gap:0.6rem; align-items:center; z-index:1100 }
-.tx-banner a { color: #7dd3fc; font-weight:600; text-decoration:underline }
+/* bottom transaction banner - light theme */
+.tx-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; background: #ffffff; color: #0f172a; padding: 0.65rem 1rem; border-radius: 10px; box-shadow: 0 8px 30px rgba(15,23,42,0.06); display:flex; gap:0.6rem; align-items:center; z-index:1100; border:1px solid #f1f3f5 }
+.tx-banner a { color: #2563eb; font-weight:600; text-decoration:underline }
 .tx-success { font-weight:700 }
 
 @media (max-width: 720px) {

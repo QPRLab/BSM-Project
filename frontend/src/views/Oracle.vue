@@ -56,6 +56,7 @@ import { ref, onMounted } from 'vue'
 import { formatEther, parseEther } from 'viem'
 import { publicClient, createWalletClientInstance } from '../utils/client'
 import { getReadonlyContract, getWalletContract } from '../utils/contracts'
+import { useWalletStore } from '../stores/wallet'
 
 
 const priceRaw = ref<bigint | null>(null)
@@ -100,12 +101,52 @@ async function loadStatus() {
 onMounted(() => { loadStatus() })
 
 async function ensureWalletClient() {
-  if (typeof (window as any).ethereum === 'undefined') throw new Error('No injected wallet found')
-  const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+  const wallet = useWalletStore()
+
+  // If store already has an initialized client and account, reuse it
+  try {
+    const existingClient = (wallet.walletClient as any)?.value
+    const existingAccount = wallet.account as string | null
+    if (existingClient && existingAccount) {
+      return { caller: existingAccount, walletClient: existingClient }
+    }
+  } catch {}
+
+  // pick provider according to saved preference (avoid unconditional window.ethereum.request)
+  const w = (window as any)
+  let chosenProvider: any = null
+
+  // prefer explicit OKX object
+  if (w.okxwallet && wallet.preferredProvider === 'okx') chosenProvider = w.okxwallet
+
+  // if providers array exists, choose according to preference
+  if (!chosenProvider && Array.isArray(w.ethereum?.providers)) {
+    const providers = w.ethereum.providers
+    if (wallet.preferredProvider === 'okx') {
+      chosenProvider = providers.find((p: any) => p.isOkxWallet || p.isOKX || p.isOkx || p.isOKExWallet)
+    } else if (wallet.preferredProvider === 'metamask') {
+      chosenProvider = providers.find((p: any) => p.isMetaMask)
+    }
+    chosenProvider = chosenProvider || providers[0]
+  }
+
+  // fallback to window.ethereum or okxwallet
+  if (!chosenProvider) chosenProvider = w.ethereum || w.okxwallet || null
+
+  if (!chosenProvider) throw new Error('No injected wallet found')
+
+  const { requestAccountsFrom } = await import('../utils/client')
+  const accounts = await requestAccountsFrom(chosenProvider) as string[]
   const caller = accounts && accounts.length > 0 ? accounts[0] : null
   if (!caller) throw new Error('No account available')
-  const walletClient: any = createWalletClientInstance(caller)
+
+  // create the viem WalletClient with the exact provider object we used to request accounts
+  const walletClient: any = createWalletClientInstance(caller, wallet.preferredProvider ?? undefined, chosenProvider)
   if (!walletClient) throw new Error('Could not create wallet client')
+
+  // persist account and the exact wallet client into store for other pages
+  try { wallet.setAccount(caller, wallet.preferredProvider ?? undefined, walletClient) } catch {}
+
   return { caller, walletClient }
 }
 
@@ -114,7 +155,7 @@ async function submitUpdate() {
     writing.value = true
     error.value = null
     if (!newPrice || String(newPrice.value).trim() === '') throw new Error('Please enter a price')
-    const { walletClient } = await ensureWalletClient()
+    const { caller, walletClient } = await ensureWalletClient()
     // parse human input to 18-decimal int (parseEther handles decimals)
     const priceBig: bigint = parseEther(String(newPrice.value)) as bigint
     const oracleWrite = await getWalletContract('coreModules#LTCPriceOracle', walletClient, 'LTCPriceOracle')
@@ -156,9 +197,9 @@ async function submitUpdate() {
 .meta { margin-top:0.5rem; color:#6b7280; font-size:0.85rem }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace }
 .muted { color:#9ca3af; font-size:0.85rem }
-.btn { background:#111827; color:#fff; border:none; padding:0.5rem 0.75rem; border-radius:8px; cursor:pointer }
-.btn.primary { background:linear-gradient(90deg,#2563eb,#7c3aed) }
-.btn.outline { background:transparent; border:1px solid #e6e7eb; color:#111827 }
+.btn { background: linear-gradient(90deg,#4f46e5,#06b6d4); color: #fff; border: none; padding: 0.5rem 0.75rem; border-radius: 8px; cursor: pointer; font-weight: 700 }
+.btn.primary { background: linear-gradient(90deg,#2563eb,#7c3aed) }
+.btn.outline { background: transparent; border: 1px solid #e6e7eb; color: #374151 }
 .status-inline { margin-left:auto; font-size:0.9rem }
 .error { color:#ef4444 }
 .input-row input { width:100%; padding:0.6rem 0.75rem; border-radius:8px; border:1px solid #e6e7eb }

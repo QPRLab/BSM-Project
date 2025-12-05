@@ -70,16 +70,24 @@ const uniqueEntries = Object.entries(addresses).reduce((acc: Array<{ addr: strin
 </script>
 
 <style scoped>
-.addresses-page { padding: 1.25rem; }
-.addresses-page h2 { margin: 0 0 0.25rem 0; color: #2c3e50 }
-.subtitle { margin: 0 0 1rem 0; color: #666 }
+.addresses-page { max-width: 980px; margin: 0 auto; padding: 1rem; color: #0f172a }
+.addresses-page h2 { margin: 0 0 0.5rem 0; color: #0f172a }
+.subtitle { margin: 0 0 1rem 0; color: #6b7280 }
 .cards { display: grid; grid-template-columns: 1fr; gap: 0.75rem }
-.card { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: linear-gradient(180deg,#fff,#fbfdff); border: 1px solid #e6eef6; border-radius: 8px; box-shadow: 0 6px 18px rgba(44,62,80,0.04); }
+.card { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #ffffff; border: 1px solid #f1f3f5; border-radius: 8px; box-shadow: 0 6px 18px rgba(15,23,42,0.04); }
 .card-left { max-width: 72%; overflow: hidden }
-.key { font-weight: 700; color: #123; margin-bottom: 0.25rem; font-size: 0.95rem }
-.addr { color: #234; font-family: monospace; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.key { font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; font-size: 0.95rem }
+.addr { color: #374151; font-family: monospace; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .card-right { display: flex; gap: 0.5rem; align-items: center }
-.btn { background: #42b983; color: #fff; border: none; padding: 0.45rem 0.7rem; border-radius: 6px; cursor: pointer; font-weight: 600 }
-.btn.ghost { background: transparent; color: #42b983; border: 1px solid #d8efe2 }
-.btn:hover { opacity: 0.95 }
+.btn { background: linear-gradient(90deg,#4f46e5,#06b6d4); color: #fff; border: none; padding: 0.45rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 700 }
+.btn.ghost { background: transparent; color: #374151; border: 1px solid #e6eef6 }
+.btn:disabled { opacity: 0.65; cursor: not-allowed }
+.btn:hover { transform: translateY(-1px); transition: transform 120ms ease }
+
+@media (max-width: 640px) {
+  .card { flex-direction: column; align-items: flex-start; gap: 0.5rem }
+  .card-left { max-width: 100% }
+  .card-right { width: 100%; display: flex; justify-content: flex-end }
+}
+
 </style>
