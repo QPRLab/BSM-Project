@@ -191,60 +191,60 @@ async function buildPermitTransferSignature(amountInMax: bigint) {
 }
 
 // 1. 构造 PermitSingle 签名
-async function buildPermitSignature(amountIn: bigint) {
-      console.log('PERMIT2_ADDRESS:', PERMIT2_ADDRESS);
-console.log('USER_ADDRESS:', USER_ADDRESS);
-console.log('USDC_ADDRESS:', USDC_ADDRESS);
-  const chainId = sepolia.id
-  const deadline = Math.floor(Date.now() / 1000) + 3600 // 秒级时间戳
-  // const nonce = 0
-  const nonce = await publicClient.readContract({
-    address: PERMIT2_ADDRESS,
-    abi: permit2Abi,
-    functionName: 'nonce',
-    args: [USER_ADDRESS, USDC_ADDRESS],
-  });
-  console.log('nonce:', nonce);
-  const domain = {
-    name: 'Permit2',
-    chainId,
-    verifyingContract: PERMIT2_ADDRESS,
-  }
+// async function buildPermitSignature(amountIn: bigint) {
+//       console.log('PERMIT2_ADDRESS:', PERMIT2_ADDRESS);
+// console.log('USER_ADDRESS:', USER_ADDRESS);
+// console.log('USDC_ADDRESS:', USDC_ADDRESS);
+//   const chainId = sepolia.id
+//   const deadline = Math.floor(Date.now() / 1000) + 3600 // 秒级时间戳
+//   // const nonce = 0
+//   const nonce = await publicClient.readContract({
+//     address: PERMIT2_ADDRESS,
+//     abi: permit2Abi,
+//     functionName: 'nonce',
+//     args: [USER_ADDRESS, USDC_ADDRESS],
+//   });
+//   console.log('nonce:', nonce);
+//   const domain = {
+//     name: 'Permit2',
+//     chainId,
+//     verifyingContract: PERMIT2_ADDRESS,
+//   }
 
-  const types = {
-    PermitSingle: [
-      { name: 'details', type: 'PermitDetails' },
-      { name: 'spender', type: 'address' },
-      { name: 'sigDeadline', type: 'uint256' },
-    ],
-    PermitDetails: [
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint160' },
-      { name: 'expiration', type: 'uint48' },
-      { name: 'nonce', type: 'uint48' },
-    ],
-  }
+//   const types = {
+//     PermitSingle: [
+//       { name: 'details', type: 'PermitDetails' },
+//       { name: 'spender', type: 'address' },
+//       { name: 'sigDeadline', type: 'uint256' },
+//     ],
+//     PermitDetails: [
+//       { name: 'token', type: 'address' },
+//       { name: 'amount', type: 'uint160' },
+//       { name: 'expiration', type: 'uint48' },
+//       { name: 'nonce', type: 'uint48' },
+//     ],
+//   }
 
-  const values = {
-    details: {
-      token: USDC_ADDRESS,
-      amount: Number(amountIn),   // ✅ uint160
-      expiration: deadline,       // ✅ uint48
-      nonce,                      // ✅ uint48
-    },
-    spender: UNIVERSAL_ROUTER_ADDRESS,
-    sigDeadline: deadline,
-  }
+//   const values = {
+//     details: {
+//       token: USDC_ADDRESS,
+//       amount: Number(amountIn),   // ✅ uint160
+//       expiration: deadline,       // ✅ uint48
+//       nonce,                      // ✅ uint48
+//     },
+//     spender: UNIVERSAL_ROUTER_ADDRESS,
+//     sigDeadline: deadline,
+//   }
 
-  const signature = await walletClient.signTypedData({
-    domain,
-    types,
-    primaryType: 'PermitSingle',
-    message: values,
-  })
+//   const signature = await walletClient.signTypedData({
+//     domain,
+//     types,
+//     primaryType: 'PermitSingle',
+//     message: values,
+//   })
 
-  return { signature, values, deadline }
-}
+//   return { signature, values, deadline }
+// }
 
 
 // 1. swap input
